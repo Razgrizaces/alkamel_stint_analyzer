@@ -30,37 +30,71 @@ def initialize_driver():
     driver = webdriver.Chrome("dependencies\\chromedriver.exe", options=chrome_options)
     return driver
 
-def get_file_path_for_race(driver, file_name_to_look_for):
-    #here we look through the Ts to grab where the FIA WEC folder is
+def get_championship_folder_elements_id(driver, file_name_to_look_for, championship):
     t_elements = driver.find_elements_by_class_name("t")
-    fia_wec_id = ""
+    championship_id = ""
     for index in range(0, len(t_elements)):
-        if("FIA WEC" in t_elements[index].text or "24 HEURES DU MANS" in t_elements[index].text):
-            #we have to add son to the element
-            fia_wec_id = t_elements[index].get_attribute('id') + "son"
-            break
-
-    folder_elements = driver.find_element_by_id(fia_wec_id).find_elements_by_class_name("t")
+        if(championship == "FIA WEC"):
+            if("FIA WEC" in t_elements[index].text or "24 HEURES DU MANS" in t_elements[index].text):
+                #we have to add son to the element
+                championship_id = t_elements[index].get_attribute('id') + "son"
+                break
+    folder_elements = ""
+    try:
+        folder_elements = driver.find_element_by_id(championship_id).find_elements_by_class_name("t")
+    except NoSuchElementException:
+        print("The championship is not in the pages.")
+        return
     race_id = ""
     for index in range(0, len(folder_elements)):
-        if(folder_elements[index].text.strip() == "RACE"):
+        if(folder_elements[index].text.strip() == file_name_to_look_for.upper()):
             #we have to add son to the element
             race_id = folder_elements[index].get_attribute('id') + "son"
+            break
+    return race_id
 
-    #print(race_id)
-
+def get_file_path_for_other_session(driver, file_name_to_look_for, championship):
+    #here we look through the Ts to grab where the FIA WEC folder is
+    race_id = get_championship_folder_elements_id(driver, file_name_to_look_for, championship)
+    #all things have 23_Analysis_ + the file name to look for, but we probably want to make sure we're looking for the right thing
     file_path = ""
     element = -1
     try:
+        while "23_Analysis" not in file_path:
+            results_id = driver.find_element_by_id(race_id).find_elements_by_class_name("t")[element].get_attribute('id')
+            result_elements = driver.find_elements_by_id(results_id)
+            print(result_elements)
+            for i in range(0, len(result_elements)):
+                csv_elements = (result_elements[i].find_elements_by_tag_name('a'))
+                file_path = csv_elements[0].get_attribute('href')
+                if "23_Analysis" in file_path:
+                    if ".CSV" in file_path:
+                        print(file_path)
+                        return file_path
+            element = element - 1 #if it doesn't exist, check the previous one, (should only happen with lemans 2021)
+    except NoSuchElementException:
+        print ("Element not found.")
+    except TypeError:
+        print ("Element not found.")
+    return file_path
+
+#deprecated, not needed anymore
+def get_file_path_for_race(driver):
+    #here we look through the Ts to grab where the FIA WEC folder is
+    race_id = get_championship_folder_elements_id(driver, 'FIA WEC', 'RACE')
+    file_path = ""
+    element = -1
+    try:
+        #probably don't need this anymore and can use the above func
         while '.CSV' not in file_path:
             results_id = driver.find_element_by_id(race_id).find_elements_by_class_name("folder")[element].get_attribute('id')
-            result_elements = driver.find_element_by_id(results_id).find_elements_by_class_name("t")
-            print(results_id)
+            result_elements = driver.find_elements_by_id(results_id)
+            print(result_elements)
             for i in range(0, len(result_elements)):
                 csv_elements = (result_elements[i].find_elements_by_tag_name('a'))
                 file_path = csv_elements[0].get_attribute('href')
                 print(file_path)
-                if '23_Analysis_Race' in file_path or '23_Analsysis_Race' in file_path:
+                if '23_Analysis_Race' in file_path :
                     if '.CSV' in file_path:
                         return file_path
             element = element - 1 #if it doesn't exist, check the previous one, (should only happen with lemans 2021)
@@ -70,7 +104,55 @@ def get_file_path_for_race(driver, file_name_to_look_for):
         print ("Element not found.")
     return file_path
 
-#I got no idea why this works and the other one doesn't lmao
+def pull_and_save_csvs(driver, season_option, event_option, championship, round):
+    print(event_option.text)
+    print(season_option.text)
+    #selectors based on the event + what we want to pull. this is only specific to FIA WEC. would have to look at the other things stored here to grab the data.
+    if event_option.text == "LE MANS":
+        if(season_option.text == "2019-2020"):
+            session_types = ["Free Practice","Qualifying Practice 1", "Qualifying Practice 2", "Qualifying Practice 3",\
+                    "Qualifying LMGTE Pro & LMGTE Am", "Qualifying LMP1 & LMP2", "Hyperpole", "Warm Up"]
+        elif(season_option.text == "2021" or season_option.text == "2022"):
+            session_types = ["Free Practice 1", "Qualifying Practice", "Free Practice 2", "Free Practice 3", "Hyperpole", "Free Practice 4",  "Warm Up"]
+        elif(season_option.text == "2013"):
+            session_types = ["Free Practice", "Qualifying Practice 1", "Qualifying Practice 2", "Hyperpole", "Warm Up"]
+        else:
+            session_types = ["Free Practice", "Qualifying Practice 1", "Qualifying Practice 2", "Qualifying Practice 3", "Hyperpole", "Warm Up"]
+    else:
+        if(season_option.text == "2013" or season_option.text == "2014"):
+            session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying Practice"]
+        elif(season_option.text == "2018-2019" or season_option.text == "2019-2020"):
+            session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying LMGTE Pro - LMGTE Am", "Qualifying LMP1 - LMP2"]
+        elif(season_option.text == "2021" or season_option.text == "2022"):
+            session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying LMGTE Pro - LMGTE Am", "Qualifying HYPERCAR - LMP2", "Race"]
+        else:
+            session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying LMGTE Pro & LMGTE Am", "Qualifying LMP1 & LMP2"]
+    print(session_types)
+    for k in session_types:
+        df = pd.DataFrame()
+        try:
+            df = pd.read_csv(get_file_path_for_other_session(driver, k, championship), delimiter = ";")
+        except FileNotFoundError:
+            print("File name not found, likely FIA WEC row doesn't exist!")
+            continue
+        except TypeError:
+            print("File name not found, likely FIA WEC row doesn't exist!")
+            continue
+        except UnicodeDecodeError:
+            print("Pulled a pdf by accident since the row pulled doesn't exist.")
+            continue
+        #add the wec season and circuit to the data, for later. 
+        df['championship'] = 'FIA WEC'
+        df['session_type'] = k
+        df['season'] = season_option.text
+        df['circuit'] = event_option.text
+        df['round'] = round + 1
+        save_file_path = "data/" + season_option.text + "_" + event_option.text + "_" + k +  ".csv"
+        save_file_path = save_file_path.replace(" ", "_")
+        try:
+            df.to_csv(save_file_path)
+        except FileNotFoundError:
+            print("File name not found, save not completed.")
 
 def main():
     driver = initialize_driver()
@@ -84,37 +166,19 @@ def main():
         try:
             event_selector = Select(driver.find_element_by_name("evvent"))
             event_options = event_selector.options
-            for j in range (0, len(event_options)):
+            #loops through the events
+            for j in range (3, len(event_options)):
+                #pull the event
+                event_selector.select_by_index(j)
+                #we get into race conditions if we don't update the elements here, so we pull them before we load
+                event_selector = Select(driver.find_element_by_name("evvent"))
+                event_options = event_selector.options
+                season_selector = Select(driver.find_element_by_name("season"))
+                season_options = season_selector.options
                 #obtain the csv and save it to a df. 
-                    event_selector.select_by_index(j)
-                    df = pd.DataFrame()
-                    try:
-                        df = pd.read_csv(get_file_path_for_race(driver, "Classification_Race_Hour"), delimiter = ";")
-                    except FileNotFoundError:
-                        print("File name not found, likely FIA WEC row doesn't exist!")
-                        continue
-                    except TypeError:
-                        print("File name not found, likely FIA WEC row doesn't exist!")
-                        continue
-                    event_selector = Select(driver.find_element_by_name("evvent"))
-                    event_options = event_selector.options
-                    season_selector = Select(driver.find_element_by_name("season"))
-                    season_options = season_selector.options
-                    #have to call this wait here in order for the race condition to solve itself, otherwise we get an exception here
-                    driver.implicitly_wait(2)
-                    
-                    #add the wec season and circuit to the data, for later. 
-                    df['season'] = season_options[i].text
-                    df['circuit'] = event_options[j].text
-                    df['round'] = j + 1
-                    save_file_path = "data/" + season_options[i].text + "_" + event_options[j].text + ".csv"
-                    save_file_path = save_file_path.replace(" ", "_")
-                    try:
-                        df.to_csv(save_file_path)
-                    except FileNotFoundError:
-                        print("File name not found, save not completed.")
-            season_selector = Select(driver.find_element_by_name("season"))
-            season_options = season_selector.options
+                pull_and_save_csvs(driver, season_options[i], event_options[j], "FIA WEC", j)
+                #not really sure if this wait does anything...
+                driver.implicitly_wait(2)
         except TimeoutException:
             print ("Loading took too much time?...")
     driver.close()
