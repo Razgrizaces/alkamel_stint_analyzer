@@ -1,3 +1,4 @@
+from codecs import charmap_decode
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
@@ -29,26 +30,7 @@ def initialize_driver():
     driver = webdriver.Chrome("dependencies\\chromedriver.exe", options=chrome_options)
     return driver
 
-def get_championship_folder_elements_id(driver, championship):
-    t_elements = driver.find_elements_by_class_name("t")
-    championship_id = ""
-    for index in range(0, len(t_elements)):
-        if(championship == "FIA WEC"):
-            if("FIA WEC" in t_elements[index].text or "24 HEURES DU MANS" in t_elements[index].text):
-                #we have to add son to the element
-                championship_id = t_elements[index].get_attribute('id') + "son"
-                break
-        elif (championship == "IMSA"):
-            if(" IMSA" in t_elements[index].text):
-                championship_id = t_elements[index].get_attribute('id') + "son"
-                break
-        elif(championship == "ELMS"):
-            if(" ELMS" == t_elements[index].text or "EUROPEAN LE MANS SERIES" in t_elements[index].text):
-                championship_id = t_elements[index].get_attribute('id') + "son"
-                break
-    return championship_id
-
-def get_race_id_from_championship_id(driver, file_name_to_look_for, championship_id):
+def get_single_race_id(driver, file_name_to_look_for, championship_id):
     folder_elements = ""
     try:
         folder_elements = driver.find_element_by_id(championship_id).find_elements_by_class_name("t")
@@ -63,39 +45,20 @@ def get_race_id_from_championship_id(driver, file_name_to_look_for, championship
             break
     return race_id
 
-#we can also do this where we loop through the championship and grab every session, instead of having to look through each individual session
-def look_through_folders(driver, championship):
-    #all things have 23_Analysis_ + the file name to look for, but we probably want to make sure we're looking for the right thing
-    file_path = ""
-    element = -1
-    # for races we want to grab the last 'hour' in the stack
-    # for everything else we probably want to grab just the 
-
-    #so the method should go: 
-    #Pull championship id
-    championship_id = get_championship_folder_elements_id(driver, championship)
-    #look for elements that contain "folder" in the championship id, that way we don't have to attach "son" to each of the ids
-    folder_elements = driver.find_element_by_id(championship_id).find_elements_by_class_name("folder")
-    print(folder_elements)
-    for i in range(0, len(folder_elements)):
-        folder_id = folder_elements[i].get_attribute('id')
-        # this grabs all the elements inside the folder w/ class t
-        # if we're at the lowest level we have everything, but for races, we must go one deeper
-        driver.find_element_by_id(folder_id).find_elements_by_class_name('t')
-
-def get_file_path_for_other_session(driver, file_name_to_look_for, championship):
+#likely deprecated
+def get_file_path_for_other_session_with_file_name(driver, file_name_to_look_for, championship):
     #here we look through the Ts to grab where the file to look for is
     #all things have 23_Analysis_ + the file name to look for, but we probably want to make sure we're looking for the right thing
     file_path = ""
-    element = -1
+    element = 0
     championship_id = get_championship_folder_elements_id(driver, championship)
-    look_through_folders(driver, championship)
-    race_id = get_race_id_from_championship_id(driver, file_name_to_look_for, championship_id)
+    race_id = get_single_race_id(driver, file_name_to_look_for, championship_id)
     try:
         while "23_Analysis" not in file_path or "23_Time" not in file_path:
             #this moves the element back 1, so cycling through different files in the folders
             #okay this is kinda interesting: might need to make a method for this 
-            results_id = driver.find_element_by_id(race_id).find_elements_by_class_name("folder")[element].get_attribute('id')
+            print(race_id)
+            results_id = driver.find_element_by_id(race_id).find_elements_by_class_name("t")[element].get_attribute('id')
             result_elements = driver.find_elements_by_id(results_id)
             for i in range(0, len(result_elements)):
                 csv_elements = (result_elements[i].find_elements_by_tag_name('a'))
@@ -104,7 +67,7 @@ def get_file_path_for_other_session(driver, file_name_to_look_for, championship)
                 if "23_Analysis" in file_path or "23_Time" in file_path:
                     if ".CSV" in file_path:
                         return file_path
-            element = element - 1 #if it doesn't exist, check the previous one, (should only happen with lemans 2021)
+            element = element + 1 #if it doesn't exist, check the previous one, (should only happen with lemans 2021)
     except NoSuchElementException or TypeError:
         print ("Element not found.")
     return file_path
@@ -112,7 +75,7 @@ def get_file_path_for_other_session(driver, file_name_to_look_for, championship)
 #deprecated, not needed anymore
 def get_file_path_for_race(driver):
     #here we look through the Ts to grab where the FIA WEC folder is
-    championship_id = get_championship_folder_elements_id(driver, 'FIA WEC', 'RACE')
+    championship_id = get_championship_folder_elements_id(driver, 'IMSA')
     file_path = ""
     element = -1
     try:
@@ -125,7 +88,7 @@ def get_file_path_for_race(driver):
                 csv_elements = (result_elements[i].find_elements_by_tag_name('a'))
                 file_path = csv_elements[0].get_attribute('href')
                 print(file_path)
-                if '23_Analysis_Race' in file_path :
+                if "23_Analysis" in file_path or "23_Time" in file_path:
                     if '.CSV' in file_path:
                         return file_path
             element = element + 1 #if it doesn't exist, check the previous one, (should only happen with lemans 2021)
@@ -134,6 +97,41 @@ def get_file_path_for_race(driver):
     except TypeError:
         print ("Element not found.")
     return file_path
+
+#this pulls csvs but it only does it if it has the session type built in, deprecated
+def pull_and_save_csvs(driver, season_option, event_option, championship, round):
+    print(event_option.text)
+    print(season_option.text)
+    #selectors based on the event + what we want to pull. this is only specific to FIA WEC. would have to look at the other things stored here to grab the data.
+    session_types = grab_event_selectors(championship, season_option, event_option)
+    for k in session_types:
+        df = pd.DataFrame()
+        try:
+            df = pd.read_csv(get_file_path_for_other_session_with_file_name(driver, k, championship), delimiter = ";")
+        except FileNotFoundError:
+            print("File name not found, likely the championship row doesn't exist!")
+            continue
+        except UnicodeDecodeError:
+            print("Pulled a pdf by accident since the row pulled doesn't exist.")
+            continue
+        except ValueError:
+            print("Wrong File Pulled?...")
+            continue
+        except TypeError:
+            print("Wrong File Pulled?...")
+            continue
+        #add the wec season and circuit to the data, for later. 
+        df['championship'] = championship
+        df['session_type'] = k
+        df['season'] = season_option.text
+        df['circuit'] = event_option.text
+        df['round'] = round + 1
+        save_file_path = "data/" + season_option.text + "_" + event_option.text + "_" + k +  ".csv"
+        save_file_path = save_file_path.replace(" ", "_")
+        try:
+            df.to_csv(save_file_path)
+        except FileNotFoundError:
+            print("File name not found, save not completed.")
 
 #this is prob going to be deprecated 
 def grab_event_selectors(championship, season_option, event_option):
@@ -162,6 +160,25 @@ def grab_event_selectors(championship, season_option, event_option):
         session_types = ["Race"]
     return session_types
 
+def get_championship_folder_elements_id(driver, championship):
+    t_elements = driver.find_elements_by_class_name("t")
+    championship_id = ""
+    for index in range(0, len(t_elements)):
+        if(championship == "FIA WEC"):
+            if("FIA WEC" in t_elements[index].text or "24 HEURES DU MANS" in t_elements[index].text):
+                #we have to add son to the element
+                championship_id = t_elements[index].get_attribute('id') + "son"
+                break
+        elif (championship == "IMSA"):
+            if("WEATHERTECH SPORTSCAR CHAMPIONSHIP" in t_elements[index].text):
+                championship_id = t_elements[index].get_attribute('id') + "son"
+                break
+        elif(championship == "ELMS"):
+            if(" ELMS" == t_elements[index].text or "EUROPEAN LE MANS SERIES" in t_elements[index].text):
+                championship_id = t_elements[index].get_attribute('id') + "son"
+                break
+    return championship_id
+
 def get_base_url(championship):
     if(championship == "FIA WEC"):
         base_url = "http://fiawec.alkamelsystems.com/"  
@@ -173,40 +190,102 @@ def get_base_url(championship):
         base_url = "http://lemanscup.alkamelsystems.com/"
     return base_url
 
-def pull_and_save_csvs(driver, season_option, event_option, championship, round):
+def get_file_path_by_session_id(driver, session_id):
+    #here we look through the Ts to grab where the file to look for is
+    #all things have 23_Analysis_ + the file name to look for, but we probably want to make sure we're looking for the right thing
+    file_path = ""
+    element = 0
+    try:
+        while "23_Analysis" not in file_path or "23_Time" not in file_path:
+            #this moves the element back 1, so cycling through different files in the folders
+            #okay this is kinda interesting: might need to make a method for this 
+            results_id = driver.find_element_by_id(session_id).find_elements_by_class_name("t")[element].get_attribute('id')
+            result_elements = driver.find_elements_by_id(results_id)
+            for i in range(0, len(result_elements)):
+                csv_elements = (result_elements[i].find_elements_by_tag_name('a'))
+                file_path = csv_elements[0].get_attribute('href')
+                print(file_path)
+                if ("23_Analysis" in file_path or "23_Time" in file_path) and ".CSV" in file_path:
+                    return file_path
+            element = element + 1 #if it doesn't exist, check the previous one, (should only happen with lemans 2021)
+    except NoSuchElementException or TypeError:
+        print ("Element not found.")
+        return
+    except IndexError:
+        print ("Element not found.")
+        return
+    return file_path
+
+def pull_sessions_from_file_prefixes(driver, championship_id, championship, round, season_option, event_option):
+    folder_elements = ""
+    file_prefixes = ["SESSION", "QUALIFYING", "RACE", "PRACTICE", "WARM UP"]
+    try:
+        folder_elements = driver.find_element_by_id(championship_id).find_elements_by_class_name("t")
+    except NoSuchElementException:
+        print("The championship is not in the pages.")
+        return
+    session_id = ""
+    for index in range(0, len(folder_elements)):
+        #if the piece is in the element, we should look for it and pull the relevant session
+        for i in file_prefixes:
+            current_file_prefix = folder_elements[index].text.strip()
+            if(i in current_file_prefix):
+                session_id = folder_elements[index].get_attribute('id') + "son"
+                print(current_file_prefix)
+                if current_file_prefix == "RACEWAY":
+                    break
+                if 'RACE' in current_file_prefix:
+                    session_elements = driver.find_element_by_id(session_id).find_elements_by_class_name('folder')
+                    print(len(session_elements))
+                    if(len(session_elements) > 2):
+                        if(championship == "IMSA"):
+                            print(season_option.text)
+                            if(season_option.text == '2020' or season_option.text == '2021' or season_option.text == '2022'):
+                                session_id = session_elements[-1].get_attribute('id')
+                            else:
+                                session_id = session_elements[-2].get_attribute('id')
+                        else:
+                            session_id = session_elements[-1].get_attribute('id')
+                df = pd.DataFrame()
+                try:
+                    df = pd.read_csv(get_file_path_by_session_id(driver, session_id), delimiter = ";")
+                except FileNotFoundError:
+                    print("File name not found, likely the championship row doesn't exist!")
+                    continue
+                except UnicodeDecodeError:
+                    print("Pulled a pdf by accident since the row pulled doesn't exist.")
+                    continue
+                except TypeError:
+                    print("Wrong File Pulled?...")
+                    continue
+                except ValueError:
+                    print("Wrong File Pulled?...")
+                    continue
+                #add the wec season and circuit to the data, for later. 
+                df['championship'] = championship
+                df['session_type'] = current_file_prefix
+                df['season'] = season_option.text
+                df['circuit'] = event_option.text
+                df['round'] = round + 1
+                save_file_path = "data/" + season_option.text + "_" + event_option.text + "_" + current_file_prefix +  ".csv"
+                save_file_path = save_file_path.replace(" ", "_")
+                print(save_file_path)
+                try:
+                    df.to_csv(save_file_path)
+                except FileNotFoundError:
+                    print("File name not found, save not completed.")
+                
+def loop_through_championship(driver, season_option, event_option, championship, round):
     print(event_option.text)
     print(season_option.text)
-    #selectors based on the event + what we want to pull. this is only specific to FIA WEC. would have to look at the other things stored here to grab the data.
-    session_types = grab_event_selectors(championship, season_option, event_option)
-    for k in session_types:
-        df = pd.DataFrame()
-        try:
-            df = pd.read_csv(get_file_path_for_other_session(driver, k, championship), delimiter = ";")
-        except FileNotFoundError:
-            print("File name not found, likely the championship row doesn't exist!")
-            continue
-        except UnicodeDecodeError:
-            print("Pulled a pdf by accident since the row pulled doesn't exist.")
-            continue
-        except ValueError:
-            print("Wrong File Pulled?...")
-            continue
-        except TypeError:
-            print("Wrong File Pulled?...")
-            continue
-        #add the wec season and circuit to the data, for later. 
-        df['championship'] = championship
-        df['session_type'] = k
-        df['season'] = season_option.text
-        df['circuit'] = event_option.text
-        df['round'] = round + 1
-        save_file_path = "data/" + season_option.text + "_" + event_option.text + "_" + k +  ".csv"
-        save_file_path = save_file_path.replace(" ", "_")
-        try:
-            df.to_csv(save_file_path)
-        except FileNotFoundError:
-            print("File name not found, save not completed.")
-
+    #-son contains the folder, also is class folder
+    #xx without son contains the name/container, is class t
+    
+    #this gets the championshipid from the folders
+    championship_id = get_championship_folder_elements_id(driver, championship)
+    #now we want to pull the sessions in the folder
+    pull_sessions_from_file_prefixes(driver, championship_id, championship, round, season_option, event_option)
+    
 def main():
     driver = initialize_driver()
     championship = "IMSA"
@@ -216,7 +295,7 @@ def main():
     season_selector = Select(driver.find_element_by_name("season"))
     season_options = season_selector.options
     #pull the event selectors
-    for i in range(1, len(season_options)):
+    for i in range(4, len(season_options)):
         season_selector.select_by_index(i)
         try:
             event_selector = Select(driver.find_element_by_name("evvent"))
@@ -231,7 +310,8 @@ def main():
                 season_selector = Select(driver.find_element_by_name("season"))
                 season_options = season_selector.options
                 #obtain the csv and save it to a df. 
-                pull_and_save_csvs(driver, season_options[i], event_options[j], championship, j)
+                #pull_and_save_csvs(driver, season_options[i], event_options[j], championship, j)
+                loop_through_championship(driver, season_options[i], event_options[j], championship, j)
                 #not really sure if this wait does anything...
                 driver.implicitly_wait(2)
         except TimeoutException:
