@@ -15,36 +15,6 @@ import requests as req
 import json
 
 delay = 5 #seconds
-
-def initialize_driver():
-    #setting chrome options; note this uses chromedriver_81, use whatever driver you have
-    chrome_options = Options()
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
-    chrome_options.add_argument("--disable-extensions"); # disabling extensions
-    chrome_options.add_argument("--disable-gpu"); # applicable to windows os only
-    chrome_options.add_argument("--disable-dev-shm-usage"); # overcome limited resource problems
-    chrome_options.add_argument("--no-sandbox");
-    chrome_options.add_argument("--remote-debugging-port=9225");
-    prefs = {"download.default_directory":"C:\\Users\\trist\\Documents\\coding\\wec_stint_analyzer\\data\\"}
-    chrome_options.add_experimental_option("prefs", prefs)
-    driver = webdriver.Chrome("dependencies\\chromedriver.exe", options=chrome_options)
-    return driver
-
-def get_single_race_id(driver, file_name_to_look_for, championship_id):
-    folder_elements = ""
-    try:
-        folder_elements = driver.find_element_by_id(championship_id).find_elements_by_class_name("t")
-    except NoSuchElementException:
-        print("The championship is not in the pages.")
-        return
-    race_id = ""
-    for index in range(0, len(folder_elements)):
-        if(folder_elements[index].text.strip() == file_name_to_look_for.upper()):
-            #we have to add son to the element to get the files
-            race_id = folder_elements[index].get_attribute('id') + "son"
-            break
-    return race_id
-
 #likely deprecated
 def get_file_path_for_other_session_with_file_name(driver, file_name_to_look_for, championship):
     #here we look through the Ts to grab where the file to look for is
@@ -71,6 +41,33 @@ def get_file_path_for_other_session_with_file_name(driver, file_name_to_look_for
     except NoSuchElementException or TypeError:
         print ("Element not found.")
     return file_path
+
+#this is prob going to be deprecated - it is
+def grab_event_selectors(championship, season_option, event_option):
+    if championship == 'FIA WEC':
+        if event_option.text == "LE MANS":
+            if(season_option.text == "2019-2020"):
+                session_types = ["Free Practice","Qualifying Practice 1", "Qualifying Practice 2", "Qualifying Practice 3",\
+                        "Qualifying LMGTE Pro & LMGTE Am", "Qualifying LMP1 & LMP2", "Hyperpole", "Warm Up"]
+            elif(season_option.text == "2021" or season_option.text == "2022"):
+                session_types = ["Free Practice 1", "Qualifying Practice", "Free Practice 2", "Free Practice 3", "Hyperpole", "Free Practice 4",  "Warm Up"]
+            elif(season_option.text == "2013"):
+                session_types = ["Free Practice", "Qualifying Practice 1", "Qualifying Practice 2", "Hyperpole", "Warm Up"]
+            else:
+                session_types = ["Free Practice", "Qualifying Practice 1", "Qualifying Practice 2", "Qualifying Practice 3", "Hyperpole", "Warm Up"]
+        else:
+            if(season_option.text == "2013" or season_option.text == "2014"):
+                session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying Practice"]
+            elif(season_option.text == "2018-2019" or season_option.text == "2019-2020"):
+                session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying LMGTE Pro - LMGTE Am", "Qualifying LMP1 - LMP2"]
+            elif(season_option.text == "2021" or season_option.text == "2022"):
+                session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying LMGTE Pro - LMGTE Am", "Qualifying HYPERCAR - LMP2", "Race"]
+            else:
+                session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying LMGTE Pro & LMGTE Am", "Qualifying LMP1 & LMP2"]
+    elif championship == 'IMSA':
+        #session_types = ["Practice 1", "Practice 2","Practice 3","Practice 4", "Qualifying", "Warm-Up", "Race"]
+        session_types = ["Race"]
+    return session_types
 
 #deprecated, not needed anymore
 def get_file_path_for_race(driver):
@@ -133,32 +130,34 @@ def pull_and_save_csvs(driver, season_option, event_option, championship, round)
         except FileNotFoundError:
             print("File name not found, save not completed.")
 
-#this is prob going to be deprecated 
-def grab_event_selectors(championship, season_option, event_option):
-    if championship == 'FIA WEC':
-        if event_option.text == "LE MANS":
-            if(season_option.text == "2019-2020"):
-                session_types = ["Free Practice","Qualifying Practice 1", "Qualifying Practice 2", "Qualifying Practice 3",\
-                        "Qualifying LMGTE Pro & LMGTE Am", "Qualifying LMP1 & LMP2", "Hyperpole", "Warm Up"]
-            elif(season_option.text == "2021" or season_option.text == "2022"):
-                session_types = ["Free Practice 1", "Qualifying Practice", "Free Practice 2", "Free Practice 3", "Hyperpole", "Free Practice 4",  "Warm Up"]
-            elif(season_option.text == "2013"):
-                session_types = ["Free Practice", "Qualifying Practice 1", "Qualifying Practice 2", "Hyperpole", "Warm Up"]
-            else:
-                session_types = ["Free Practice", "Qualifying Practice 1", "Qualifying Practice 2", "Qualifying Practice 3", "Hyperpole", "Warm Up"]
-        else:
-            if(season_option.text == "2013" or season_option.text == "2014"):
-                session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying Practice"]
-            elif(season_option.text == "2018-2019" or season_option.text == "2019-2020"):
-                session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying LMGTE Pro - LMGTE Am", "Qualifying LMP1 - LMP2"]
-            elif(season_option.text == "2021" or season_option.text == "2022"):
-                session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying LMGTE Pro - LMGTE Am", "Qualifying HYPERCAR - LMP2", "Race"]
-            else:
-                session_types = ["Free Practice 1", "Free Practice 2", "Free Practice 3", "Qualifying LMGTE Pro & LMGTE Am", "Qualifying LMP1 & LMP2"]
-    elif championship == 'IMSA':
-        #session_types = ["Practice 1", "Practice 2","Practice 3","Practice 4", "Qualifying", "Warm-Up", "Race"]
-        session_types = ["Race"]
-    return session_types
+def initialize_driver():
+    #setting chrome options; note this uses chromedriver_81, use whatever driver you have
+    chrome_options = Options()
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
+    chrome_options.add_argument("--disable-extensions"); # disabling extensions
+    chrome_options.add_argument("--disable-gpu"); # applicable to windows os only
+    chrome_options.add_argument("--disable-dev-shm-usage"); # overcome limited resource problems
+    chrome_options.add_argument("--no-sandbox");
+    chrome_options.add_argument("--remote-debugging-port=9225");
+    prefs = {"download.default_directory":"C:\\Users\\trist\\Documents\\coding\\wec_stint_analyzer\\data\\"}
+    chrome_options.add_experimental_option("prefs", prefs)
+    driver = webdriver.Chrome("dependencies\\chromedriver.exe", options=chrome_options)
+    return driver
+
+def get_single_race_id(driver, file_name_to_look_for, championship_id):
+    folder_elements = ""
+    try:
+        folder_elements = driver.find_element_by_id(championship_id).find_elements_by_class_name("t")
+    except NoSuchElementException:
+        print("The championship is not in the pages.")
+        return
+    race_id = ""
+    for index in range(0, len(folder_elements)):
+        if(folder_elements[index].text.strip() == file_name_to_look_for.upper()):
+            #we have to add son to the element to get the files
+            race_id = folder_elements[index].get_attribute('id') + "son"
+            break
+    return race_id
 
 def get_championship_folder_elements_id(driver, championship):
     t_elements = driver.find_elements_by_class_name("t")
@@ -175,6 +174,10 @@ def get_championship_folder_elements_id(driver, championship):
                 break
         elif(championship == "ELMS"):
             if(" ELMS" == t_elements[index].text or "EUROPEAN LE MANS SERIES" in t_elements[index].text):
+                championship_id = t_elements[index].get_attribute('id') + "son"
+                break
+        elif(championship == "LeMansCup"):
+            if("MICHELIN LE MANS CUP" in t_elements[index].text or "ROAD TO LE MANS" in t_elements[index].text):
                 championship_id = t_elements[index].get_attribute('id') + "son"
                 break
     return championship_id
@@ -205,7 +208,7 @@ def get_file_path_by_session_id(driver, session_id):
                 csv_elements = (result_elements[i].find_elements_by_tag_name('a'))
                 file_path = csv_elements[0].get_attribute('href')
                 print(file_path)
-                if ("23_Analysis" in file_path or "23_Time" in file_path) and ".CSV" in file_path:
+                if ("23_Analysis" in file_path or "23_Time" in file_path or "23_Analsysis" in file_path) and ".CSV" in file_path:
                     return file_path
             element = element + 1 #if it doesn't exist, check the previous one, (should only happen with lemans 2021)
     except NoSuchElementException or TypeError:
@@ -231,21 +234,25 @@ def pull_sessions_from_file_prefixes(driver, championship_id, championship, roun
             current_file_prefix = folder_elements[index].text.strip()
             if(i in current_file_prefix):
                 session_id = folder_elements[index].get_attribute('id') + "son"
-                print(current_file_prefix)
-                if current_file_prefix == "RACEWAY":
+                #if raceway is in the prefix, then we have to break
+                if "RACEWAY" in current_file_prefix:
                     break
                 if 'RACE' in current_file_prefix:
                     session_elements = driver.find_element_by_id(session_id).find_elements_by_class_name('folder')
                     print(len(session_elements))
-                    if(len(session_elements) > 2):
+                    if(len(session_elements) >= 2):
                         if(championship == "IMSA"):
                             print(season_option.text)
                             if(season_option.text == '2020' or season_option.text == '2021' or season_option.text == '2022'):
                                 session_id = session_elements[-1].get_attribute('id')
                             else:
                                 session_id = session_elements[-2].get_attribute('id')
-                        else:
-                            session_id = session_elements[-1].get_attribute('id')
+                        elif (championship == "ELMS"):
+                            if(season_option.text == '2013'):
+                                session_id = session_elements[-2].get_attribute('id')
+                            else:
+                                session_id = session_elements[-1].get_attribute('id')
+                print(session_id)
                 df = pd.DataFrame()
                 try:
                     df = pd.read_csv(get_file_path_by_session_id(driver, session_id), delimiter = ";")
@@ -280,7 +287,6 @@ def loop_through_championship(driver, season_option, event_option, championship,
     print(season_option.text)
     #-son contains the folder, also is class folder
     #xx without son contains the name/container, is class t
-    
     #this gets the championshipid from the folders
     championship_id = get_championship_folder_elements_id(driver, championship)
     #now we want to pull the sessions in the folder
@@ -288,14 +294,14 @@ def loop_through_championship(driver, season_option, event_option, championship,
     
 def main():
     driver = initialize_driver()
-    championship = "IMSA"
+    championship = "ELMS"
     base_url = get_base_url(championship)
     driver.get(base_url)
     #pull the season selectors
     season_selector = Select(driver.find_element_by_name("season"))
     season_options = season_selector.options
     #pull the event selectors
-    for i in range(4, len(season_options)):
+    for i in range(8, len(season_options)):
         season_selector.select_by_index(i)
         try:
             event_selector = Select(driver.find_element_by_name("evvent"))
