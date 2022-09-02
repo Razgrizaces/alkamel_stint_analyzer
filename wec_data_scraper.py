@@ -1,4 +1,5 @@
 from codecs import charmap_decode
+from unittest import result
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
@@ -173,7 +174,7 @@ def get_championship_folder_elements_id(driver, championship):
                 championship_id = t_elements[index].get_attribute('id') + "son"
                 break
         elif(championship == "ELMS"):
-            if(" ELMS" == t_elements[index].text or "EUROPEAN LE MANS SERIES" in t_elements[index].text):
+            if("ELMS" in t_elements[index].text or "EUROPEAN LE MANS SERIES" in t_elements[index].text):
                 championship_id = t_elements[index].get_attribute('id') + "son"
                 break
         elif(championship == "LeMansCup"):
@@ -202,10 +203,17 @@ def get_file_path_by_session_id(driver, session_id):
         while "23_Analysis" not in file_path or "23_Time" not in file_path:
             #this moves the element back 1, so cycling through different files in the folders
             #okay this is kinda interesting: might need to make a method for this 
-            results_id = driver.find_element_by_id(session_id).find_elements_by_class_name("t")[element].get_attribute('id')
-            result_elements = driver.find_elements_by_id(results_id)
+            #fuji 2012 edge case, don't ask why'
+            if(session_id =='jtz193son'):
+                csv_element = driver.find_element_by_id('jtz1115').find_elements_by_tag_name('a')
+                file_path = csv_element[0].get_attribute('href')
+                print(file_path)
+                return file_path
+            else:
+                results_id = driver.find_element_by_id(session_id).find_elements_by_class_name("t")[element].get_attribute('id')
+                result_elements = driver.find_elements_by_id(results_id)
             for i in range(0, len(result_elements)):
-                csv_elements = (result_elements[i].find_elements_by_tag_name('a'))
+                csv_elements = result_elements[i].find_elements_by_tag_name('a')
                 file_path = csv_elements[0].get_attribute('href')
                 print(file_path)
                 if ("23_Analysis" in file_path or "23_Time" in file_path or "23_Analsysis" in file_path) and ".CSV" in file_path:
@@ -218,6 +226,47 @@ def get_file_path_by_session_id(driver, session_id):
         print ("Element not found.")
         return
     return file_path
+
+def get_race_session_id(championship, season_option, session_elements, event_option):
+    if(championship == "IMSA"):
+        print(season_option.text)
+        if(season_option.text == '2017' or season_option.text == '2018' or season_option.text == '2019'):
+            session_id = session_elements[-2].get_attribute('id')
+        else:
+            session_id = session_elements[-1].get_attribute('id')
+    elif (championship == "ELMS"):
+        if(season_option.text == '2013'):
+            session_id = session_elements[-2].get_attribute('id')
+        else:
+            session_id = session_elements[-1].get_attribute('id')
+    #edge case handling
+    elif (championship == "FIA WEC"):
+        if(season_option.text == '2012'):
+            if("FUJI" in event_option.text):
+                session_id = session_elements[-3].get_attribute('id')
+            elif("SHANGHAI" in event_option.text):
+                session_id = session_elements[-2].get_attribute('id')
+            elif("SPA F" in event_option.text):
+                session_id = session_elements[-1].get_attribute('id')
+            else:
+                session_id = session_elements[-1].get_attribute('id')
+        elif(season_option.text == '2013'):
+            session_id = session_elements[-2].get_attribute('id')
+        elif(season_option.text == '2014'):
+            if("CIRCUIT" in event_option.text or "FUJI" in event_option.text or "INTERLAGOS" in event_option.text):
+                session_id = session_elements[-1].get_attribute('id')
+            else:
+                session_id = session_elements[-2].get_attribute('id')
+        elif(season_option.text == '2015' or season_option.text == '2017'):
+            if("LE MANS" in event_option.text):
+                session_id = session_elements[-2].get_attribute('id')
+            else:
+                session_id = session_elements[-1].get_attribute('id')
+        else:
+            session_id = session_elements[-1].get_attribute('id')
+    else:
+        session_id = session_elements[-1].get_attribute('id')
+    return session_id
 
 def pull_sessions_from_file_prefixes(driver, championship_id, championship, round, season_option, event_option):
     folder_elements = ""
@@ -234,25 +283,14 @@ def pull_sessions_from_file_prefixes(driver, championship_id, championship, roun
             current_file_prefix = folder_elements[index].text.strip()
             if(i in current_file_prefix):
                 session_id = folder_elements[index].get_attribute('id') + "son"
-                #if raceway is in the prefix, then we have to break
-                if "RACEWAY" in current_file_prefix:
+                #if race is in the prefix, but it's not the race folder, then we have to break
+                if "RACEWAY" in current_file_prefix or "PRE-RACE" in current_file_prefix:
                     break
                 if 'RACE' in current_file_prefix:
                     session_elements = driver.find_element_by_id(session_id).find_elements_by_class_name('folder')
                     print(len(session_elements))
                     if(len(session_elements) >= 2):
-                        if(championship == "IMSA"):
-                            print(season_option.text)
-                            if(season_option.text == '2020' or season_option.text == '2021' or season_option.text == '2022'):
-                                session_id = session_elements[-1].get_attribute('id')
-                            else:
-                                session_id = session_elements[-2].get_attribute('id')
-                        elif (championship == "ELMS"):
-                            if(season_option.text == '2013'):
-                                session_id = session_elements[-2].get_attribute('id')
-                            else:
-                                session_id = session_elements[-1].get_attribute('id')
-                print(session_id)
+                        session_id = get_race_session_id(championship, season_option, session_elements, event_option)
                 df = pd.DataFrame()
                 try:
                     df = pd.read_csv(get_file_path_by_session_id(driver, session_id), delimiter = ";")
@@ -294,33 +332,39 @@ def loop_through_championship(driver, season_option, event_option, championship,
     
 def main():
     driver = initialize_driver()
-    championship = "ELMS"
-    base_url = get_base_url(championship)
-    driver.get(base_url)
-    #pull the season selectors
-    season_selector = Select(driver.find_element_by_name("season"))
-    season_options = season_selector.options
-    #pull the event selectors
-    for i in range(8, len(season_options)):
-        season_selector.select_by_index(i)
-        try:
-            event_selector = Select(driver.find_element_by_name("evvent"))
-            event_options = event_selector.options
-            #loops through the events
-            for j in range (0, len(event_options)):
-                #pull the event
-                event_selector.select_by_index(j)
-                #we get into race conditions if we don't update the elements here, so we pull them before we load
+    championships = ['FIA WEC','IMSA', 'ELMS', 'LeMansCup']
+    for c in championships:
+        base_url = get_base_url(c)
+        driver.get(base_url)
+        #pull the season selectors
+        season_selector = Select(driver.find_element_by_name("season"))
+        season_options = season_selector.options
+        #pull the event selectors
+        if(c == 'ELMS'):
+            r = 8
+        elif(c == 'FIA WEC'):
+            r = 12
+        else:
+            r = 0
+        for i in range(r, len(season_options)):
+            season_selector.select_by_index(i)
+            try:
                 event_selector = Select(driver.find_element_by_name("evvent"))
                 event_options = event_selector.options
-                season_selector = Select(driver.find_element_by_name("season"))
-                season_options = season_selector.options
-                #obtain the csv and save it to a df. 
-                #pull_and_save_csvs(driver, season_options[i], event_options[j], championship, j)
-                loop_through_championship(driver, season_options[i], event_options[j], championship, j)
-                #not really sure if this wait does anything...
-                driver.implicitly_wait(2)
-        except TimeoutException:
-            print ("Loading took too much time?...")
+                #loops through the events
+                for j in range (0, len(event_options)):
+                    #pull the event
+                    event_selector.select_by_index(j)
+                    #we get into race conditions if we don't update the elements here, so we pull them before we load
+                    event_selector = Select(driver.find_element_by_name("evvent"))
+                    event_options = event_selector.options
+                    season_selector = Select(driver.find_element_by_name("season"))
+                    season_options = season_selector.options
+                    #obtain the csv and save it to a df. 
+                    loop_through_championship(driver, season_options[i], event_options[j], c, j)
+                    #not really sure if this wait does anything...
+                    driver.implicitly_wait(2)
+            except TimeoutException:
+                print ("Loading took too much time?...")
     driver.close()
 main()
