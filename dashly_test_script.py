@@ -16,53 +16,72 @@ fia_wec_data['circuit_season'] = fia_wec_data['round'].map(int).map(str) + " - "
 app = dash.Dash(__name__)
 fia_classes = ['Overall', 'LMGTE', 'LMGTE Pro', 'LMGTE Am', 'LMPs', 'LMP1/Hypercar', 'LMP2', 'CNDT (LeMans Only)', 'LMP1-H (2014 Only)', 'LMP1-L (2014 Only)']
 
+
+#I didn't write this code so let's see if we can try to rewrite this so it looks better.
 app.layout = html.Div(
     children=[
         html.Div(
             children=[
+                #title
                 html.H1(
                     children="FIA WEC Round/Stint Analyzer", className="header-title"
                 ),
+                #header description
                 html.P(
                     className="header-description",
                 ),
             ],
+            #header class
             className="header",
         ),
         html.Div(
+            #pickers, but I think this is weird/wrong, bc it doesn't do what I want, let's try to use dbc
             children=[
-                html.Div(
-                    children=[
-                        html.Div(children="Season", className="menu-title"),
-                        dcc.Dropdown(
-                            id="season_filter",
-                            options=[
-                                {"label": season, "value": season}
-                                for season in np.sort(fia_wec_data.season.unique())
-                            ],
-                            value="2012",
-                            clearable=False,
-                            className="dropdown",
-                        ),
-                        html.Div(children="Circuit", className="menu-title"),
-                        dcc.Dropdown(
-                            id="circuit_filter",
-                            options=[
-                            ],
-                            clearable=False,
-                            className="dropdown",
-                        ),
-                        html.Div(children="WEC Class", className="menu-title"),
-                        dcc.Dropdown(
-                            id="wec_class_filter",
-                            options=[
-                                {"label": value, "value": value}
-                                for value in fia_classes
-                            ],
-                            clearable=False,
-                            className="dropdown",
-                        ),
-                    ]
+                    html.Div(
+                        children=[
+                            #gonna need one for championship as well
+                            #season picker
+                            html.Div(children="Season", className="menu-title"),
+                            #these use dcc dropdowns, so we'll have to swap to dbc
+                            dcc.Dropdown(
+                                id="season_filter",
+                                options=[
+                                    {"label": season, "value": season}
+                                    for season in np.sort(fia_wec_data.season.unique())
+                                ],
+                                value="2012",
+                                clearable=False,
+                                className="dropdown",
+                            )
+                        ],className = 'menu-item'
+                    ),
+                    html.Div(
+                        children=[
+                            #circuit picker -> this should change to round
+                            html.Div(children="Circuit", className="menu-title"),
+                            dcc.Dropdown(
+                                id="circuit_filter",
+                                options=[
+                                ],
+                                clearable=False,
+                                className="dropdown",
+                            )
+                        ],className = 'menu-item'
+                    ),
+                    html.Div(
+                        children=[
+                        #class picker
+                            html.Div(children="WEC Class", className="menu-title"),
+                            dcc.Dropdown(
+                                id="wec_class_filter",
+                                options=[
+                                    {"label": value, "value": value}
+                                    for value in fia_classes
+                                ],
+                                clearable=False,
+                                className="dropdown",
+                            )
+                        ],className = 'menu-item'
                 ),
             ],
             className="menu",
