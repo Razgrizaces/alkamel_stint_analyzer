@@ -203,31 +203,50 @@ def get_base_url(championship):
         base_url = "http://lemanscup.alkamelsystems.com/"
     return base_url
 
-def get_file_path_by_session_id(driver, session_id):
+def get_file_path_by_session_id(driver, session_id, file_type):
     #here we look through the Ts to grab where the file to look for is
     #all things have 23_Analysis_ + the file name to look for, but we probably want to make sure we're looking for the right thing
     file_path = ""
     element = 0
     try:
-        while "23_Analysis" not in file_path or "23_Time" not in file_path:
-            #this moves the element back 1, so cycling through different files in the folders
-            #okay this is kinda interesting: might need to make a method for this 
-            #fuji 2012 edge case, don't ask why'
-            if(session_id =='jtz193son'):
-                csv_element = driver.find_element(By.ID, 'jtz1115').find_elements(By.TAG_NAME, 'a')
-                file_path = csv_element[0].get_attribute('href')
-                print(file_path)
-                return file_path
-            else:
-                results_id = driver.find_element(By.ID, session_id).find_elements(By.CLASS_NAME, "t")[element].get_attribute('id')
-                result_elements = driver.find_elements(By.ID, results_id)
-            for i in range(0, len(result_elements)):
-                csv_elements = result_elements[i].find_elements(By.TAG_NAME, 'a')
-                file_path = csv_elements[0].get_attribute('href')
-                print(file_path)
-                if ("23_Analysis" in file_path or "23_Time" in file_path or "23_Analsysis" in file_path) and ".CSV" in file_path:
+        if(file_type == 'analysis'):
+            while "23_Analysis" not in file_path or "23_Time" not in file_path:
+                #this moves the element back 1, so cycling through different files in the folders
+                #okay this is kinda interesting: might need to make a method for this 
+                #fuji 2012 edge case, don't ask why'
+                if(session_id =='jtz193son'):
+                    csv_element = driver.find_element(By.ID, 'jtz1115').find_elements(By.TAG_NAME, 'a')
+                    file_path = csv_element[0].get_attribute('href')
+                    print(file_path)
                     return file_path
-            element = element + 1 #if it doesn't exist, check the previous one, (should only happen with lemans 2021)
+                else:
+                    results_id = driver.find_element(By.ID, session_id).find_elements(By.CLASS_NAME, "t")[element].get_attribute('id')
+                    result_elements = driver.find_elements(By.ID, results_id)
+                for i in range(0, len(result_elements)):
+                    csv_elements = result_elements[i].find_elements(By.TAG_NAME, 'a')
+                    file_path = csv_elements[0].get_attribute('href')
+                    print(file_path)
+                    if ("23_Analysis" in file_path or "23_Time" in file_path or "23_Analsysis" in file_path) and ".CSV" in file_path:
+                        if ".CSV" in file_path:
+                            return file_path
+                        else:
+                            file_path = ""
+                element = element + 1 #if it doesn't exist, check the previous one, (should only happen with lemans 2021)
+        elif file_type == 'classification':
+            while "Classification" not in file_path or 'Results' in file_path:
+                results_id = driver.find_element(By.ID, session_id).find_elements(By.CLASS_NAME, "t")[element].get_attribute('id') 
+                result_elements = driver.find_elements(By.ID, results_id)
+                print(results_id)
+                for i in range(0, len(result_elements)):
+                    csv_elements = result_elements[i].find_elements(By.TAG_NAME, 'a')
+                    file_path = csv_elements[0].get_attribute('href')
+                    print(file_path)
+                    if "Classification" in file_path or 'Results' in file_path:
+                        if ".CSV" in file_path:
+                            return file_path
+                        else:
+                            file_path = ""
+                element = element + 1 #if it doesn't exist, check the previous one, (should only happen with lemans 2021)
     except NoSuchElementException or TypeError:
         print ("Element not found.")
         return
@@ -282,6 +301,7 @@ def get_race_session_id(championship, season_option, session_elements, event_opt
     return session_id
 
 def pull_sessions_from_file_prefixes(driver, folder_elements, championship, round, season_option, event_option):
+    
     file_prefixes = ["SESSION", "QUALIFYING", "RACE", "PRACTICE", "WARM UP"]
     session_id = ""
     for index in range(0, len(folder_elements)):
@@ -295,12 +315,11 @@ def pull_sessions_from_file_prefixes(driver, folder_elements, championship, roun
                     break
                 if 'RACE' in current_file_prefix:
                     session_elements = driver.find_element(By.ID, session_id).find_elements(By.CLASS_NAME, 'folder')
-                    print(len(session_elements))
                     if(len(session_elements) >= 2):
                         session_id = get_race_session_id(championship, season_option, session_elements, event_option)
-                df = pd.DataFrame()
                 try:
-                    df = pd.read_csv(get_file_path_by_session_id(driver, session_id), delimiter = ";", dtype=str)
+                    lap_df = pd.read_csv(get_file_path_by_session_id(driver, session_id, 'analysis'), delimiter = ";", dtype=str)
+                    class_df = pd.read_csv(get_file_path_by_session_id(driver, session_id, 'classification'), delimiter = ";", dtype=str)
                 except FileNotFoundError:
                     print("File name not found, likely the championship row doesn't exist!")
                     continue
@@ -313,11 +332,29 @@ def pull_sessions_from_file_prefixes(driver, folder_elements, championship, roun
                 except ValueError:
                     print("Wrong File Pulled?...")
                     continue
+                #fix the columns of the dfs
+                class_df.columns = class_df.columns.str.strip()
+                class_df.columns = class_df.columns.str.lower()
+                lap_df.columns = lap_df.columns.str.strip()
+                lap_df.columns = lap_df.columns.str.lower()
+
+                #get the columns of the classifcation df we want
+                class_wanted_columns = ['number', 'class', 'group', 'team', 'vehicle']
+                #print(class_df.columns)
+                try:
+                    class_df = class_df[class_wanted_columns]
+                except: 
+                    print("Column not in df, ok to merge.")
+                    class_df = class_df['number']
+                lap_df_dup_columns = ['class', 'group', 'team']
+                try:
+                    for c in lap_df_dup_columns:
+                        df = df.drop(c, axis=1)
+                except:
+                    print("Column not in df, ok to merge.")
+                df = pd.merge(lap_df, class_df, on = 'number')
                 #add the wec season and circuit to the data, for later. 
-                if(championship == 'FIAWEC'):
-                    df['championship'] = 'FIA WEC'
-                else:
-                    df['championship'] = championship
+                df['championship'] = championship
                 df['session_type'] = current_file_prefix
                 print(current_file_prefix)
                 df['season'] = season_option.text
@@ -333,7 +370,7 @@ def pull_sessions_from_file_prefixes(driver, folder_elements, championship, roun
 
 def main():
     driver = initialize_driver()
-    championships = ['FIAWEC']
+    championships = ['IMSA']
     for c in championships:
         base_url = get_base_url(c)
         driver.get(base_url)
@@ -344,7 +381,7 @@ def main():
         if(c == 'ELMS'):
             r = 9
         elif(c == 'FIAWEC'):
-            r = 9
+            r = 1
         elif(c == 'IMSA'):
             r = 0
         elif(c == 'LeMansCup'):
