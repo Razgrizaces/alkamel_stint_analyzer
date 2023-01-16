@@ -11,8 +11,8 @@ from flask_caching import Cache
 #caching stuff
 
 #GCloud Stuff
-project_id = 'liquid-evening-342715'
-os.environ["GCLOUD_PROJECT"] = project_id
+credentials = json.load(open('dependencies\\application_default_credentials.json'))
+os.environ["GCLOUD_PROJECT"] = credentials['quota_project_id']
 client = bigquery.Client()
 
 sql = """

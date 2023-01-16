@@ -1,0 +1,1 @@
+web: gunicorn wec_stint_analyzer.py:server
