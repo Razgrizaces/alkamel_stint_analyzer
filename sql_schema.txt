@@ -28,5 +28,5 @@ lap_time_seconds:FLOAT,
 elapsed_seconds:FLOAT,
 pit_time_seconds:FLOAT,
 session:STRING,
-circuit:STRING,
-event:STRING,
+event:STRING,	
+circuit:STRING
