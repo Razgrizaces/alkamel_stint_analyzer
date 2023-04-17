@@ -333,62 +333,47 @@ def pull_sessions_from_file_prefixes(driver, folder_elements, championship, roun
                         session_id = get_race_session_id(championship, season_option, session_elements, event_option)
                 #this has to be changed
                 #I think we just have to pull a lap_df
-                if(check_merge_season(championship, season_index) == True):
-                    try:
-                        lap_df = pd.read_csv(get_file_path_by_session_id(driver, session_id, 'analysis'), delimiter = ";", dtype=str)
-                        class_df = pd.read_csv(get_file_path_by_session_id(driver, session_id, 'classification'), delimiter = ";", dtype=str)
-                    except FileNotFoundError:
-                        print("File name not found, likely the championship row doesn't exist!")
-                        continue
-                    except UnicodeDecodeError:
-                        print("Pulled a pdf by accident since the row pulled doesn't exist.")
-                        continue
-                    except TypeError:
-                        print("Wrong File Pulled?...")
-                        continue
-                    except ValueError:
-                        print("Wrong File Pulled?...")
-                        continue
-                    #fix the columns of the dfs
-                    class_df.columns = class_df.columns.str.strip()
-                    class_df.columns = class_df.columns.str.lower()
-                    lap_df.columns = lap_df.columns.str.strip()
-                    lap_df.columns = lap_df.columns.str.lower()
+                try:
+                    lap_df = pd.read_csv(get_file_path_by_session_id(driver, session_id, 'analysis'), delimiter = ";", dtype=str)
+                    class_df = pd.read_csv(get_file_path_by_session_id(driver, session_id, 'classification'), delimiter = ";", dtype=str)
+                except FileNotFoundError:
+                    print("File name not found, likely the championship row doesn't exist!")
+                    continue
+                except UnicodeDecodeError:
+                    print("Pulled a pdf by accident since the row pulled doesn't exist.")
+                    continue
+                except TypeError:
+                    print("Wrong File Pulled?...")
+                    continue
+                except ValueError:
+                    print("Wrong File Pulled?...")
+                    continue
+                #fix the columns of the dfs
+                class_df.columns = class_df.columns.str.strip()
+                class_df.columns = class_df.columns.str.lower()
+                lap_df.columns = lap_df.columns.str.strip()
+                lap_df.columns = lap_df.columns.str.lower()
 
-                    #get the columns of the classifcation df we want
+                #get the columns of the classifcation df we want
+                if(check_merge_season(championship, season_index) == True):
                     class_wanted_columns = ['number', 'class', 'group', 'team', 'vehicle']
-                    #print(class_df.columns)
-                    try:
-                        class_df = class_df[class_wanted_columns]
-                    except: 
-                        print("Column not in df, ok to merge.")
-                        class_df = class_df['number']
+                else:
+                    class_wanted_columns = ['number', 'vehicle']
+                #print(class_df.columns)
+                try:
+                    class_df = class_df[class_wanted_columns]
+                except: 
+                    print("Column not in df, ok to merge.")
+                    class_df = class_df['number']
+                if(check_merge_season(championship, season_index) == True):
                     lap_df_dup_columns = ['class', 'group', 'team']
                     try:
                         for c in lap_df_dup_columns:
                             df = df.drop(c, axis=1)
                     except:
                         print("Column not in df, ok to merge.")
-                    df = pd.merge(lap_df, class_df, on = 'number')
-                    #add the wec season and circuit to the data, for later. 
-                else:
-                    try:
-                        df = pd.read_csv(get_file_path_by_session_id(driver, session_id, 'analysis'), delimiter = ";", dtype=str)
-                    except FileNotFoundError:
-                        print("File name not found, likely the championship row doesn't exist!")
-                        continue
-                    except UnicodeDecodeError:
-                        print("Pulled a pdf by accident since the row pulled doesn't exist.")
-                        continue
-                    except TypeError:
-                        print("Wrong File Pulled?...")
-                        continue
-                    except ValueError:
-                        print("Wrong File Pulled?...")
-                        continue
-                    
-                df.columns = df.columns.str.strip()
-                df.columns = df.columns.str.lower()
+                df = pd.merge(lap_df, class_df, on = 'number')
+                #add the wec season and circuit to the data, for later. 
                 df['championship'] = championship
                 df['session_type'] = current_file_prefix
                 print(current_file_prefix)
@@ -405,7 +390,7 @@ def pull_sessions_from_file_prefixes(driver, folder_elements, championship, roun
 
 def main():
     driver = initialize_driver()
-    championships = ['FIAWEC']
+    championships = ['FIAWEC', 'IMSA']
     for c in championships:
         base_url = get_base_url(c)
         driver.get(base_url)
