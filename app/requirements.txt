@@ -1,0 +1,12 @@
+dash==2.7.1
+Flask_Caching==2.0.1
+numpy==1.22.4
+pandas==1.4.4
+plotly==5.10.0
+requests==2.26.0
+selenium==4.7.2
+gunicorn==20.1.0
+google-api-core==1.33.2
+google-cloud-bigquery==3.4.0
+db-dtypes==1.0.0
+boto3==1.26.59
