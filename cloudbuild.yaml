@@ -1,0 +1,4 @@
+steps:
+- name: gcr.io/cloud-builders/docker
+entrypoint: 'docker'
+args: ['build', '--no-cache', '--network=cloudbuild', '-t', 'us-east1-docker.pkg.dev/${PROJECT_ID}/alkamel-timing-systems-docker/my-image', '.', '-f', 'Dockerfile']

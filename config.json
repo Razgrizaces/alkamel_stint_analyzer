@@ -1,0 +1,12 @@
+{
+  "credsStore": "desktop",
+  "credHelpers": {
+    "us-east1-docker.pkg.dev": "gcloud",
+    "gcr.io": "gcloud",
+    "us.gcr.io": "gcloud",
+    "eu.gcr.io": "gcloud",
+    "asia.gcr.io": "gcloud",
+    "staging-k8s.gcr.io": "gcloud",
+    "marketplace.gcr.io": "gcloud"
+  }
+}
