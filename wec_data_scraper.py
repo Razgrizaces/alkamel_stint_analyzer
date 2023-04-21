@@ -300,13 +300,13 @@ def get_race_session_id(championship, season_option, session_elements, event_opt
         session_id = session_elements[-1].get_attribute('id')
     return session_id
 
-#this checks if we need to merge the dfs
+#this checks if we need to merge the dfs to get classification columns, true if we do, false if we don't
 def check_merge_season(championship, index):
     if(championship == 'ELMS'):
-        if(index < 8):
+        if(index < 10):
             return True
     elif(championship == 'FIAWEC'):
-        if(index < 10):
+        if(index < 4):
             return True
     elif(championship == 'IMSA'):
         if(index < 6):
@@ -390,7 +390,7 @@ def pull_sessions_from_file_prefixes(driver, folder_elements, championship, roun
 
 def main():
     driver = initialize_driver()
-    championships = ['FIAWEC', 'IMSA']
+    championships = ['FIAWEC']
     for c in championships:
         base_url = get_base_url(c)
         driver.get(base_url)
@@ -399,11 +399,11 @@ def main():
         season_options = season_selector.options
         #pull the event selectors
         if(c == 'ELMS'):
-            r = 9
+            r = 8
         elif(c == 'FIAWEC'):
-            r = 11
+            r = 1
         elif(c == 'IMSA'):
-            r = 7
+            r = 0
         elif(c == 'LeMansCup'):
             r = 0
         for i in range(r, len(season_options)):
