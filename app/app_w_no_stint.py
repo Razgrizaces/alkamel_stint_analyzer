@@ -1,6 +1,7 @@
 import dash
 from dash import dcc
 from dash import html
+from dash import dash_table
 import pandas as pd
 from dash.dependencies import Output, Input
 import plotly.express as px
@@ -11,26 +12,23 @@ from flask_caching import Cache
 #caching stuff
 
 #GCloud Stuff
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="app/application_default_credentials.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="application_default_credentials.json"
+os.environ["GCLOUD_PROJECT"]='liquid-evening-342715'
 client = bigquery.Client()
 
-sql = """
-    SELECT *
-    FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board`
-    LIMIT 100
-"""
 query_config = bigquery.QueryJobConfig(use_legacy_sql=True)
 app = dash.Dash(__name__)
-cache = Cache(app.server, config={
+server = app.server
+#cache = Cache(app.server, config={
     # try 'filesystem' if you don't want to setup redis
-    'CACHE_TYPE': 'filesystem',
-    'CACHE_DIR': 'cache/'
-})
+    #'CACHE_TYPE': 'filesystem',
+    #'CACHE_DIR': 'cache/'
+#})
 
-TIMEOUT = 60
+#TIMEOUT = 60
 
-#one thing I need to fix is to map circuit to round 
-from_table = """ FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board` """
+#one thing I need to fix is to map circuit to round c
+from_table = """ FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint` tbws """
 def sql_pull_one_column(column,where_query):
     select_column = "SELECT " + column + '\n'
     groupby_column = "GROUP BY " + column + '\n'
@@ -83,6 +81,12 @@ app.layout = html.Div(children=[
             dcc.Dropdown(id="class_filter",options=[], clearable=False, className="dropdown")
             ],className = 'menu-item'
         ),
+        html.Div(children=[
+            #class picker
+            html.Div(children="Analysis", className="menu-title"),
+            dcc.Dropdown(id="analysis_filter",options=[], clearable=False, className="dropdown")
+            ],className = 'menu-item'
+        ),
     ],className="menu",
 ),
     html.Div(
@@ -96,6 +100,7 @@ app.layout = html.Div(children=[
     html.Div(
         children=[
             html.Div(children=dcc.Graph(id="driver_lap_time_plot", config={"displayModeBar": False},),className="card",),
+            html.Div(children=dash_table.DataTable(id='classification_table'))
         ],className = 'wrapper'
     )
 ])
@@ -106,13 +111,21 @@ def create_and_query(column, selected):
     and_query = "AND " + column + "='" + selected + "' "
     return and_query    
 
-def pull_data_sql(filters):
+def pull_data_sql(filters, query_type):
     #what columns do I really need?
     #potentially down the line
     #int, class_int, gap, class_gap
-    select_query = """SELECT key, lap_time_seconds, pit_time_seconds, session, round_event, team_no, 
-    position, class_position, driver_name, championship, manufacturer, vehicle, class, elapsed_seconds"""
-    full_query = select_query + from_table + filters
+    #type 
+    group_orders = ""
+    if (query_type == "all"):
+        select_query = """SELECT key, lap_time_seconds, pit_time_seconds, session, round_event, team_no, 
+        position, class_position, driver_name, championship, manufacturer, vehicle, class, elapsed_seconds"""
+    elif query_type == "class":
+        select_query = """SELECT team_no, vehicle, class, tbws.group, round_event, max(lap_number) as laps_completed, 
+        min(s1_seconds) as fastest_s1, min (s2_seconds) as fastest_s2, min(s3_seconds) as fastest_s3, min(lap_time_seconds) as fastest_lap, \
+        max(elapsed_seconds) as completed_time""" 
+        group_orders = """group by 1,2,3,4,5 order by 6 desc, 10 asc"""
+    full_query = select_query + from_table + filters + group_orders
     df = client.query(full_query).to_dataframe()
     return df
 
@@ -146,9 +159,12 @@ def set_class_options(championship, circuit, season):
     Input('championship_filter', 'value')
 )
 def set_season_options(selected):
-    where_query = create_where_query("championship", selected)
-    df = sql_pull_one_column("season", where_query).sort_values()
-    return [{'label': i, 'value': i} for i in df]
+    if(selected is not None):
+        where_query = create_where_query("championship", selected)
+        df = sql_pull_one_column("season", where_query).sort_values()
+        return [{'label': i, 'value': i} for i in df]
+    else: 
+        pull_data_sql("LIMIT 0", "all").to_json(orient='split') 
 
 @app.callback(
     Output('circuit_filter', 'options'),
@@ -161,7 +177,7 @@ def set_circuit_options(season, championship):
     df = sql_pull_one_column("round_event", where_query).sort_values()
     return [{'label': i, 'value': i} for i in df]
 
-@cache.memoize(timeout=TIMEOUT)
+#@cache.memoize(timeout=TIMEOUT)
 @app.callback(
     Output('alkamel_data', 'data'),
     Input('championship_filter', 'value'), Input('season_filter', 'value'), Input('circuit_filter', 'value')
@@ -175,9 +191,27 @@ def create_sql_query(championship, season, circuit):
         if(circuit != None):
             where_query = where_query + create_and_query("round_event", circuit)
     #here, we should pull the data, but if the data is empty we just make it empty
-        return pull_data_sql(where_query).to_json(orient='split')
+        return pull_data_sql(where_query, "all").to_json(orient='split')
     else:
-        return json.dumps({'data':pull_data_sql("LIMIT 0")})
+        return pull_data_sql("LIMIT 0", "all").to_json(orient='split')
+
+@app.callback(
+    Output('classification_table', 'data'),
+    Input('championship_filter', 'value'),
+    Input('season_filter', 'value'),
+    Input('circuit_filter', 'value'),
+)
+def load_classification(championship, season, circuit):
+    where_query = ""
+    df = pd.DataFrame()
+    if(championship != None):
+        where_query = create_where_query("championship", championship)
+        if(season != None): 
+            where_query = where_query + create_and_query("season", season)
+        if(circuit != None):
+            where_query = where_query + create_and_query("round_event", circuit)
+        #df = pull_data_sql(where_query, "class")
+    return [{'label': i, 'value': i} for i in df]
 
 @app.callback(
     Output('session_filter', 'options'),
@@ -214,6 +248,7 @@ def pull_and_filter_alkamel_data(alk_class, session, fia_wec_data):
     fia_wec_data = pd.read_json(fia_wec_data, orient='split')
     fia_wec_data = filter_class(fia_wec_data, alk_class)
     fia_wec_data = fia_wec_data[fia_wec_data['session'] == session]
+    fia_wec_data.to_csv('pull.csv')
     return fia_wec_data.to_json(orient='split')
     
 #callback for the charts
@@ -224,6 +259,7 @@ def pull_and_filter_alkamel_data(alk_class, session, fia_wec_data):
 def update_dlt_plot(wec_class, alkamel_data_filtered):
     fia_wec_data_filtered = pd.read_json(alkamel_data_filtered, orient='split')
     fia_wec_data_filtered = fia_wec_data_filtered.reset_index(drop=True)
+    print(fia_wec_data_filtered)
     #filter for team + drivers
     #this is the position plot format.
     color_sequence = px.colors.qualitative.Alphabet
@@ -265,4 +301,4 @@ def update_dlt_plot(wec_class, alkamel_data_filtered):
 
     return position_plot, lap_time_plot, driver_lap_time_plot
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(host='127.0.0.1', port=8070, debug=True, use_reloader=True)
