@@ -88,6 +88,7 @@ app.layout = html.Div(children=[
             dcc.Dropdown(id="analysis_filter",options=[], clearable=False, className="dropdown")
             ],className = 'menu-item'
         ),
+        html.Div(children=dcc.Store(id='filters')),
     ],className="menu",
 ),
     html.Div(
@@ -112,6 +113,74 @@ def create_and_query(column, selected):
     and_query = "AND " + column + "='" + selected + "' "
     return and_query    
 
+#loading takes forever for the filters, i think idea is to pull once, grab the data and populate everything from that
+@app.callback(
+    Output('filters', 'data'),
+    Input('championship_filter', 'value'),
+)
+def pull_dropdown_filters(championship):
+    query = """select championship, season,  round_event, session, class
+    from `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint`
+    group by 1,2,3,4,5
+    order by 1,2,3,4,5"""
+    df = client.query(query).to_dataframe().to_json(orient='split')
+    return df
+
+@app.callback(
+    Output('season_filter', 'options'),
+    Input('championship_filter', 'value'),
+    Input('filters', 'data')
+)
+def set_season_options(selected, filter_data):
+    filtered_data = pd.read_json(filter_data, orient='split')
+    filtered_data = filtered_data[filtered_data['championship'] == selected]
+    filtered_data = filtered_data.groupby('season').count().reset_index()
+    filtered_data = filtered_data['season']
+    return [{'label': i, 'value': i} for i in filtered_data]
+
+@app.callback(
+    Output('circuit_filter', 'options'),
+    Input('season_filter', 'value'),Input('championship_filter', 'value'),
+    Input('filters', 'data')
+)
+def set_circuit_options(season, championship, filter_data):
+    filtered_data = pd.read_json(filter_data, orient='split')
+    filtered_data = filtered_data[(filtered_data['championship'] == championship)&(filtered_data['season']==season)]
+    filtered_data = filtered_data.groupby('round_event').count().reset_index()
+    print(filtered_data)
+    filtered_data = filtered_data['round_event']
+    return [{'label': i, 'value': i} for i in filtered_data]
+
+@app.callback(
+    Output('session_filter', 'options'),
+    Input('championship_filter', 'value'), Input('season_filter', 'value'), Input('circuit_filter', 'value'), Input('filters', 'data')
+)
+def set_session_options(championship,season, circuit, filter_data):
+    filtered_data = pd.read_json(filter_data, orient='split')
+    filtered_data = filtered_data[(filtered_data['championship'] == championship)&(filtered_data['season']==season)&(filtered_data['round_event']==circuit)]
+    filtered_data = filtered_data.groupby('session').count().reset_index()
+    filtered_data = filtered_data['session']
+    return [{'label': i, 'value': i} for i in filtered_data]
+
+@app.callback(
+    Output('class_filter', 'options'),
+    Input('championship_filter', 'value'), Input('circuit_filter', 'value'), Input('season_filter', 'value'), Input('filters', 'data')
+)
+def set_class_options(championship, circuit, season,filter_data):
+    filtered_data = pd.read_json(filter_data, orient='split')
+    filtered_data = filtered_data[(filtered_data['championship'] == championship)&(filtered_data['season']==season)&(filtered_data['round_event']==circuit)]
+    filtered_data = filtered_data.groupby('class').count().reset_index()
+    filtered_data = filtered_data['class']
+    #also add other classes
+    other_classes = pd.Series()
+    if championship == "LeMansCup" or championship == "ELMS":
+        other_classes = pd.Series(['Overall'])
+    else:
+        other_classes = pd.Series(['Overall', 'GTs', 'LMPs'])
+    df = pd.concat([other_classes, filtered_data]).reset_index(drop=True)
+    return [{'label': i, 'value': i} for i in df]
+
+
 def pull_data_sql(filters, query_type):
     #what columns do I really need?
     #potentially down the line
@@ -129,54 +198,6 @@ def pull_data_sql(filters, query_type):
     full_query = select_query + from_table + filters + group_orders
     df = client.query(full_query).to_dataframe()
     return df
-
-@app.callback(
-    Output('class_filter', 'options'),
-    Input('championship_filter', 'value'), Input('circuit_filter', 'value'), Input('season_filter', 'value')
-)
-def set_class_options(championship, circuit, season):
-    where_query = create_where_query("championship", championship)
-    circuit_query = ""
-    circuit_query_json = None
-    if(season != None):
-        where_query = where_query + create_and_query("season", season)
-    if(circuit != None):
-        circuit_query = create_and_query("round_event", circuit)
-        circuit_query_json = json.dumps(circuit_query)
-        where_query = where_query + circuit_query
-    if championship != None :
-        df = sql_pull_one_column("class", where_query).sort_values()
-        #also add other classes
-        other_classes = pd.Series()
-        if championship == "LeMansCup" or championship == "ELMS":
-            other_classes = pd.Series(['Overall'])
-        else:
-            other_classes = pd.Series(['Overall', 'GTs', 'LMPs'])
-        df = pd.concat([other_classes, df]).reset_index(drop=True)
-        return [{'label': i, 'value': i} for i in df]
-
-@app.callback(
-    Output('season_filter', 'options'),
-    Input('championship_filter', 'value')
-)
-def set_season_options(selected):
-    if(selected is not None):
-        where_query = create_where_query("championship", selected)
-        df = sql_pull_one_column("season", where_query).sort_values()
-        return [{'label': i, 'value': i} for i in df]
-    else: 
-        pull_data_sql("LIMIT 0", "all").to_json(orient='split') 
-
-@app.callback(
-    Output('circuit_filter', 'options'),
-    Input('season_filter', 'value'),Input('championship_filter', 'value')
-)
-def set_circuit_options(season, championship):
-    where_query = create_where_query("championship", championship)
-    if(season != None):
-        where_query = where_query + create_and_query("season", season)
-    df = sql_pull_one_column("round_event", where_query).sort_values()
-    return [{'label': i, 'value': i} for i in df]
 
 #@cache.memoize(timeout=TIMEOUT)
 @app.callback(
@@ -220,21 +241,6 @@ def load_classification(championship, season, circuit, alk_class):
                 return df
     raise PreventUpdate
 
-@app.callback(
-    Output('session_filter', 'options'),
-    Input('championship_filter', 'value'), Input('season_filter', 'value'), Input('circuit_filter', 'value')
-)
-def set_session_options(championship,season, circuit):
-    where_query = ""
-    if(championship != None):
-        where_query = create_where_query("championship", championship)
-        if(season != None): 
-            where_query = where_query + create_and_query("season", season)
-        if(circuit != None):
-            where_query = where_query + create_and_query("round_event", circuit)
-    df = sql_pull_one_column("session", where_query).sort_values()
-    return [{'label': i, 'value': i} for i in df]
-
 def filter_class(df, wec_class):
     if(wec_class != 'Overall'):
         if wec_class == 'GTs':
@@ -255,7 +261,6 @@ def pull_and_filter_alkamel_data(alk_class, session, fia_wec_data):
     fia_wec_data = pd.read_json(fia_wec_data, orient='split')
     fia_wec_data = filter_class(fia_wec_data, alk_class)
     fia_wec_data = fia_wec_data[fia_wec_data['session'] == session]
-    fia_wec_data.to_csv('pull.csv')
     return fia_wec_data.to_json(orient='split')
     
 #callback for the charts
