@@ -15,6 +15,12 @@ from dash.exceptions import PreventUpdate
 #GCloud Stuff
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="application_default_credentials.json"
 os.environ["GCLOUD_PROJECT"]='liquid-evening-342715'
+ON_HEROKU = os.environ.get('ON_HEROKU')
+if ON_HEROKU:
+    port = int(os.environ.get("PORT", 8090))  # as per OP comments default is 17995
+else:
+    port = 8070
+
 client = bigquery.Client()
 
 query_config = bigquery.QueryJobConfig(use_legacy_sql=True)
@@ -314,4 +320,4 @@ def update_dlt_plot(wec_class, alkamel_data_filtered):
 
     return position_plot, lap_time_plot, driver_lap_time_plot
 if __name__ == "__main__":
-    app.run_server(host='0.0.0.0', port=8090, debug=True, use_reloader=False)
+    app.run_server(host='127.0.0.1', port=port, debug=True, use_reloader=False)

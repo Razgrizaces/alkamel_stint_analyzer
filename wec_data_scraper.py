@@ -390,7 +390,7 @@ def pull_sessions_from_file_prefixes(driver, folder_elements, championship, roun
 
 def main():
     driver = initialize_driver()
-    championships = ['FIAWEC']
+    championships = [ 'LeMansCup']
     for c in championships:
         base_url = get_base_url(c)
         driver.get(base_url)
@@ -399,13 +399,13 @@ def main():
         season_options = season_selector.options
         #pull the event selectors
         if(c == 'ELMS'):
-            r = 8
+            r = 18
         elif(c == 'FIAWEC'):
-            r = 1
+            r = 11
         elif(c == 'IMSA'):
-            r = 0
+            r = 8
         elif(c == 'LeMansCup'):
-            r = 0
+            r = 6
         for i in range(r, len(season_options)):
             season_selector.select_by_index(i)
             try:
