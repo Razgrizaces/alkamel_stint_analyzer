@@ -2,5 +2,4 @@ other_data/
 data/
 dependencies/
 notebooks/
-application_default_credentials.json
-app/application_default_credentials.json
+credentials.json

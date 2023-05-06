@@ -13,11 +13,11 @@ from dash.exceptions import PreventUpdate
 #caching stuff
 
 #GCloud Stuff
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="application_default_credentials.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="credentials.json"
 os.environ["GCLOUD_PROJECT"]='liquid-evening-342715'
 ON_HEROKU = os.environ.get('ON_HEROKU')
 if ON_HEROKU:
-    port = int(os.environ.get("PORT", 8090))  # as per OP comments default is 17995
+    port = int(os.environ.get("PORT", 8070))  # as per OP comments default is 17995
 else:
     port = 8070
 
@@ -100,10 +100,10 @@ app.layout = html.Div(children=[
     html.Div(
         children=[
             html.Div(children=dcc.Graph(id="position_plot", config={"displayModeBar": False},),className = 'card',),
-            html.Div(children=dash_table.DataTable(id='classification_table',style_table={'height': '440px', 'overflowY': 'auto'}), ),
+            html.Div(children=dash_table.DataTable(id='classification_table'), className='dash-table'),
             html.Div(children=dcc.Store(id='alkamel_data')),
             html.Div(children=dcc.Store(id='alkamel_data_filtered')),
-        ],className="wrapper",
+        ],className="wrapper-top",
     ),
     html.Div(
         children=[
@@ -192,18 +192,40 @@ def pull_data_sql(filters, query_type):
     #potentially down the line
     #int, class_int, gap, class_gap
     #type 
-    group_orders = ""
     if (query_type == "all"):
         select_query = """SELECT key, lap_time_seconds, pit_time_seconds, session, round_event, team_no, 
         position, class_position, driver_name, championship, manufacturer, vehicle, class, elapsed_seconds"""
+        full_query = select_query + from_table + filters
+        df = client.query(full_query).to_dataframe()
+        return df
     elif query_type == "class":
-        select_query = """SELECT team_no, vehicle, class, tbws.group, round_event, max(lap_number) as laps_completed, 
-        min(s1_seconds) as fastest_s1, min (s2_seconds) as fastest_s2, min(s3_seconds) as fastest_s3, min(lap_time_seconds) as fastest_lap, \
-        max(elapsed_seconds) as completed_time""" 
-        group_orders = """group by 1,2,3,4,5 order by 6 desc, 10 asc"""
-    full_query = select_query + from_table + filters + group_orders
-    df = client.query(full_query).to_dataframe()
-    return df
+        class_query = f"""
+        with get_position_based_on_time as(
+            select team_no, position, class_position, max(elapsed_seconds) as completed_time
+            FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint` tbws 
+            {filters}
+            group by 1,2,3),
+        get_classification as(
+        SELECT team_no, vehicle, class, tbws.group, max(lap_number) as laps_completed,
+            min(s1_seconds) as fastest_s1, min (s2_seconds) as fastest_s2, min(s3_seconds) as fastest_s3, min(lap_time_seconds) as fastest_lap, 
+            max(elapsed_seconds) as completed_time
+            FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint` tbws
+        {filters}
+        group by 1,2,3,4)
+        select 
+        rank() over (order by laps_completed desc, classification.completed_time asc) position, 
+        rank() over (partition by class order by laps_completed desc, classification.completed_time asc) class_position,
+        pos.team_no, 
+        vehicle, class, classification.group, laps_completed,
+        fastest_s1,fastest_s2, fastest_s3,fastest_lap, pos.completed_time
+        from get_position_based_on_time pos
+        join get_classification classification
+        on pos.completed_time = classification.completed_time
+        order by laps_completed desc, completed_time asc"""
+        df = client.query(class_query).to_dataframe()
+        return df
+    else:
+        return pd.DataFrame()
 
 #@cache.memoize(timeout=TIMEOUT)
 @app.callback(
@@ -252,7 +274,7 @@ def filter_class(df, wec_class):
         if wec_class == 'GTs':
             return df[(df['class'].str.contains("GT"))]
         elif wec_class == 'LMPs':
-            return df[(df['class'].str.contains("LM P"))|(df['class'].str.contains("LMP"))|(df['class'].str.contains("P"))]
+            return df[((df['class'].str.contains("LM P"))|(df['class'].str.contains("LMP"))|(df['class'].str.contains("P")))&~(df['class'].str.contains("GTE"))]
         elif wec_class == 'LMP1/Hypercar':
             return df[(df['class'] == 'LMP1')|(df['class'] == 'LM P1')|(df['class'] == 'DPi')|(df['class'] == 'HYPERCAR')]
         else:
@@ -320,4 +342,4 @@ def update_dlt_plot(wec_class, alkamel_data_filtered):
 
     return position_plot, lap_time_plot, driver_lap_time_plot
 if __name__ == "__main__":
-    app.run_server(host='127.0.0.1', port=port, debug=True, use_reloader=False)
+    app.run_server(host='0.0.0.0', port=port, debug=True, use_reloader=False)
