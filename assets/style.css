@@ -39,8 +39,8 @@ body {
 
 .dash-table {
     height: 450px;
-    margin-left: 76px;
-    width: 1023px; 
+    margin-left: 67px;
+    width: 914px; 
     overflow-y: auto;
 }
 
@@ -51,7 +51,7 @@ body {
 
 .menu {
     height: 85px;
-    width: 70%;
+    width: 80%;
     display: flex;
     justify-content: space-evenly;
     padding-top: 13px;

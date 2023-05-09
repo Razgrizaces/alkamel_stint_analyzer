@@ -17,9 +17,9 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="credentials.json"
 os.environ["GCLOUD_PROJECT"]='liquid-evening-342715'
 ON_HEROKU = os.environ.get('ON_HEROKU')
 if ON_HEROKU:
-    port = int(os.environ.get("PORT", 8070))  # as per OP comments default is 17995
+    port = int(os.environ.get("PORT", 8090)) 
 else:
-    port = 8070
+    port = 8090
 
 client = bigquery.Client()
 
@@ -48,6 +48,14 @@ def sql_pull_one_column(column,where_query):
     df = client.query(sql).to_dataframe()
     return df[column]
 
+def pull_filters():
+    query = """select championship, season, round_event, session, class
+    from `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint`
+    group by 1,2,3,4,5
+    order by 1,2,3,4,5"""
+    df = client.query(query).to_dataframe().to_json(orient='split')
+    return df
+
 #I didn't write this code so let's see if we can try to rewrite this so it looks better.
 app.layout = html.Div(children=[
         #title div
@@ -59,9 +67,7 @@ app.layout = html.Div(children=[
         html.Div(children=[
                 #championship picker
             html.Div(children="Championship", className="menu-title"),
-            dcc.Dropdown(id="championship_filter",
-                options=[{"label": championship, "value": championship}for championship in sql_pull_one_column("championship", "")],
-                value="FIA WEC", clearable=False, className="dropdown",)
+            dcc.Dropdown(id="championship_filter", options = [],clearable=False, className="dropdown",)
             ],className = 'menu-item'
         ),
         html.Div(children=[
@@ -94,7 +100,7 @@ app.layout = html.Div(children=[
             dcc.Dropdown(id="analysis_filter",options=[], clearable=False, className="dropdown")
             ],className = 'menu-item'
         ),
-        html.Div(children=dcc.Store(id='filters')),
+        html.Div(children=dcc.Store(id='filters', data=pull_filters())),
     ],className="menu",
 ),
     html.Div(
@@ -119,18 +125,18 @@ def create_and_query(column, selected):
     and_query = "AND " + column + "='" + selected + "' "
     return and_query    
 
+
 #loading takes forever for the filters, i think idea is to pull once, grab the data and populate everything from that
 @app.callback(
-    Output('filters', 'data'),
-    Input('championship_filter', 'value'),
+    Output('championship_filter', 'options'),
+    Input('filters', 'data'),
 )
-def pull_dropdown_filters(championship):
-    query = """select championship, season,  round_event, session, class
-    from `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint`
-    group by 1,2,3,4,5
-    order by 1,2,3,4,5"""
-    df = client.query(query).to_dataframe().to_json(orient='split')
-    return df
+def pull_dropdown_filters(filters):
+    filter_pd = pd.read_json(filters, orient='split')
+    filtered_data = filter_pd.groupby('championship').count().reset_index()
+    filtered_data = filtered_data['championship']
+    print(filtered_data)
+    return [{'label':i, 'value':i } for i in filtered_data]
 
 @app.callback(
     Output('season_filter', 'options'),
@@ -200,21 +206,23 @@ def pull_data_sql(filters, query_type):
         return df
     elif query_type == "class":
         class_query = f"""
+
         with get_position_based_on_time as(
-            select team_no, position, class_position, max(elapsed_seconds) as completed_time
-            FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint` tbws 
-            {filters}
-            group by 1,2,3),
+        select team_no, position, class_position, championship, season, round, class_int, class_gap, max(elapsed_seconds) as completed_time
+        FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint` tbws
+        {filters}
+        group by 1,2,3,4,5,6,7,8),
         get_classification as(
-        SELECT team_no, vehicle, class, tbws.group, max(lap_number) as laps_completed,
+            SELECT team_no, vehicle, class, tbws.group, max(lap_number) as laps_completed,
             min(s1_seconds) as fastest_s1, min (s2_seconds) as fastest_s2, min(s3_seconds) as fastest_s3, min(lap_time_seconds) as fastest_lap, 
             max(elapsed_seconds) as completed_time
             FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint` tbws
-        {filters}
-        group by 1,2,3,4)
+        {filters}group by 1,2,3,4)
         select 
         rank() over (order by laps_completed desc, classification.completed_time asc) position, 
         rank() over (partition by class order by laps_completed desc, classification.completed_time asc) class_position,
+        class_int,
+        class_gap,
         pos.team_no, 
         vehicle, class, classification.group, laps_completed,
         fastest_s1,fastest_s2, fastest_s3,fastest_lap, pos.completed_time
@@ -342,4 +350,4 @@ def update_dlt_plot(wec_class, alkamel_data_filtered):
 
     return position_plot, lap_time_plot, driver_lap_time_plot
 if __name__ == "__main__":
-    app.run_server(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=port)
