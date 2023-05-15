@@ -101,19 +101,27 @@ app.layout = html.Div(children=[
             ],className = 'menu-item'
         ),
         html.Div(children=dcc.Store(id='filters', data=pull_filters())),
+        html.Div(children=dcc.Store(id='alkamel_data')),
+        html.Div(children=dcc.Store(id='alkamel_data_filtered')),
     ],className="menu",
 ),
     html.Div(
         children=[
             html.Div(children=dcc.Graph(id="position_plot", config={"displayModeBar": False},),className = 'card',),
+        ],className = 'wrapper'
+    ),
+    html.Div(
+        children=[
             html.Div(children=dash_table.DataTable(id='classification_table'), className='dash-table'),
-            html.Div(children=dcc.Store(id='alkamel_data')),
-            html.Div(children=dcc.Store(id='alkamel_data_filtered')),
-        ],className="wrapper-top",
+        ],className = 'wrapper'
     ),
     html.Div(
         children=[
             html.Div(children=dcc.Graph(id="driver_lap_time_plot", config={"displayModeBar": False},),className="card",),
+        ],className = 'wrapper'
+    ),
+    html.Div(
+        children=[
             html.Div(children=dcc.Graph(id="lap_time_plot", config={"displayModeBar": False},),className = 'card',),
         ],className = 'wrapper'
     )
