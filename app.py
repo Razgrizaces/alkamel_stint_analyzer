@@ -63,56 +63,63 @@ app.layout = html.Div(children=[
         html.H1(children="Alkamel Systems Lap Time Analyzer", className="header-title"), #title
         html.P(className="header-description",), #header
         ],className="header",), #header class for css
-    html.Div(children=[ #pickers
+    html.Div(children=[ 
         html.Div(children=[
-                #championship picker
-            html.Div(children="Championship", className="menu-title"),
+            html.Div(children="Championship", className="menu-title"),#championship picker
             dcc.Dropdown(id="championship_filter", options = [],clearable=False, className="dropdown",)
             ],className = 'menu-item'
         ),
         html.Div(children=[
-                #season picker
-            html.Div(children="Season", className="menu-title"),
+            html.Div(children="Season", className="menu-title"),#season picker
             dcc.Dropdown(id="season_filter",options=[], clearable=False, className="dropdown",)
             ],className = 'menu-item'
         ),
         html.Div(children=[
-                #circuit picker -> this should change to round
-            html.Div(children="Circuit", className="menu-title"),
+            html.Div(children="Circuit", className="menu-title"),#circuit picker -> this should change to round
             dcc.Dropdown(id="circuit_filter",options=[], clearable=False, className="dropdown")
             ],className = 'menu-item'
         ),
         html.Div(children=[
-            #session picker
-            html.Div(children="Session", className="menu-title"),
+            html.Div(children="Session", className="menu-title"),#session picker
             dcc.Dropdown(id="session_filter",options=[],clearable=False,className="dropdown",)
-            ],className = 'menu-item'
-        ),
-        html.Div(children=[
-            #class picker
-            html.Div(children="Class", className="menu-title"),
-            dcc.Dropdown(id="class_filter",options=[], clearable=False, className="dropdown")
-            ],className = 'menu-item'
-        ),
-        html.Div(children=[
-            #class picker
-            html.Div(children="Analysis", className="menu-title"),
-            dcc.Dropdown(id="analysis_filter",options=[], clearable=False, className="dropdown")
             ],className = 'menu-item'
         ),
         html.Div(children=dcc.Store(id='filters', data=pull_filters())),
         html.Div(children=dcc.Store(id='alkamel_data')),
         html.Div(children=dcc.Store(id='alkamel_data_filtered')),
-    ],className="menu",
-),
-    html.Div(
-        children=[
-            html.Div(children=dcc.Graph(id="position_plot", config={"displayModeBar": False},),className = 'card',),
-        ],className = 'wrapper'
+        ],className="menu",
+    ),
+    html.Div(children=[ 
+        html.Div(children=[
+            html.Div(children="Class", className="menu-title"),#class picker
+            dcc.Dropdown(id="class_filter",options=[], clearable=False, className="dropdown")
+            ],className = 'menu-item'
+        ),
+        html.Div(children=[
+            html.Div(children="Analysis", className="menu-title"),#class picker
+            dcc.Dropdown(id="analysis_filter",options=[], clearable=False, className="dropdown")
+            ],className = 'menu-item'
+        ),
+        html.Div(children=[
+            html.Div(children="Team/Driver", className="menu-title"),#class picker
+            dcc.Dropdown(id="team_driver_filter",options=[], clearable=False, className="dropdown")
+            ],className = 'menu-item'
+        ),
+        html.Div(children=[
+            html.Div(children="Stint", className="menu-title"),#class picker
+            dcc.Dropdown(id="stint_filter",options=[], clearable=False, className="dropdown")
+            ],className = 'menu-item'
+        ),
+        ],className="second-menu",
     ),
     html.Div(
         children=[
             html.Div(children=dash_table.DataTable(id='classification_table'), className='dash-table'),
+        ],className = 'wrapper'
+    ),
+    html.Div(
+        children=[
+            html.Div(children=dcc.Graph(id="position_plot", config={"displayModeBar": False},),className = 'card',),
         ],className = 'wrapper'
     ),
     html.Div(
@@ -207,7 +214,7 @@ def pull_data_sql(filters, query_type):
     #int, class_int, gap, class_gap
     #type 
     if (query_type == "all"):
-        select_query = """SELECT key, lap_time_seconds, pit_time_seconds, session, round_event, team_no, 
+        select_query = """SELECT key, lap_time_seconds, pit_time_seconds, session, round_event, team_no, crossing_finish_line_in_pit,
         position, class_position, driver_name, championship, manufacturer, vehicle, class, elapsed_seconds"""
         full_query = select_query + from_table + filters
         df = client.query(full_query).to_dataframe()
@@ -317,6 +324,9 @@ def update_dlt_plot(wec_class, alkamel_data_filtered):
     fia_wec_data_filtered = fia_wec_data_filtered.reset_index(drop=True)
     #why was this not needed before?... so stupid lmao
     fia_wec_data_filtered = fia_wec_data_filtered.sort_values(by='elapsed_seconds')
+
+    #filter for laps that aren'
+    fia_wec_data_filtered = fia_wec_data_filtered[fia_wec_data_filtered['crossing_finish_line_in_pit'] != 'B']
     #filter for team + drivers
     #this is the position plot format.
     color_sequence = px.colors.qualitative.Alphabet
@@ -336,11 +346,9 @@ def update_dlt_plot(wec_class, alkamel_data_filtered):
     fia_wec_data_with_cutoff_time = fia_wec_data_filtered[fia_wec_data_filtered['lap_time_seconds'] < cutoff_time]
 
     driver_lap_time_plot = px.box(fia_wec_data_with_cutoff_time,y ='driver_name', x='lap_time_seconds', color = "driver_name", color_discrete_sequence=color_sequence, title=box_plot_title)
-    driver_lap_time_plot.update_layout(
-        paper_bgcolor="black",
-        plot_bgcolor="black", 
-        legend_font_color="white")
-        
+    driver_lap_time_plot.update_layout(paper_bgcolor="black",plot_bgcolor="black",legend_font_color="white")
+    driver_lap_time_plot.update_yaxes(showticklabels=False)
+
     #this is the position plot format.
     if(wec_class == 'Overall' or wec_class == 'GTs' or wec_class == 'LMPs'):
         position_plot = px.line(fia_wec_data_filtered, x = 'elapsed_seconds', y = 'position', \
@@ -349,7 +357,7 @@ def update_dlt_plot(wec_class, alkamel_data_filtered):
         position_plot = px.line(fia_wec_data_filtered, x = 'elapsed_seconds', y = 'class_position',\
             color = "team_no", color_discrete_sequence=color_sequence)
     position_plot['layout']['yaxis']['autorange'] = "reversed"
-    position_plot.update_layout(paper_bgcolor="black",plot_bgcolor="black")
+    position_plot.update_layout(paper_bgcolor="black",plot_bgcolor="black", legend_font_color="white")
 
     fia_wec_data_with_cutoff_time = fia_wec_data_filtered[fia_wec_data_filtered['lap_time_seconds'] < cutoff_time]
     lap_time_plot = px.box(fia_wec_data_with_cutoff_time, y = 'team_no', x = 'lap_time_seconds', color = "team_no", color_discrete_sequence=color_sequence,title=box_plot_title)
@@ -358,4 +366,5 @@ def update_dlt_plot(wec_class, alkamel_data_filtered):
 
     return position_plot, lap_time_plot, driver_lap_time_plot
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=port)
+    #app.run(host='0.0.0.0', port=port, debug=True,dev_tools_hot_reload=True)
+    app.run(host='127.0.0.1', port=port, debug=True, dev_tools_hot_reload=True)
