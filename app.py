@@ -7,32 +7,18 @@ from dash.dependencies import Output, Input
 import plotly.express as px
 from google.cloud import bigquery
 import os
-import json
-from flask_caching import Cache
 from dash.exceptions import PreventUpdate
 #caching stuff
 
 #GCloud Stuff
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="credentials.json"
 os.environ["GCLOUD_PROJECT"]='liquid-evening-342715'
-ON_HEROKU = os.environ.get('ON_HEROKU')
-if ON_HEROKU:
-    port = int(os.environ.get("PORT", 8090)) 
-else:
-    port = 8090
 
 client = bigquery.Client()
 
 query_config = bigquery.QueryJobConfig(use_legacy_sql=True)
 app = dash.Dash(__name__)
 server = app.server
-#cache = Cache(app.server, config={
-    # try 'filesystem' if you don't want to setup redis
-    #'CACHE_TYPE': 'filesystem',
-    #'CACHE_DIR': 'cache/'
-#})
-
-#TIMEOUT = 60
 
 #one thing I need to fix is to map circuit to round c
 from_table = """ FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint` tbws """
@@ -57,11 +43,14 @@ def pull_filters():
     return df
 
 #I didn't write this code so let's see if we can try to rewrite this so it looks better.
-app.layout = html.Div(children=[
+app.layout = html.Div(children=[ 
         #title div
     html.Div(children=[
         html.H1(children="Alkamel Systems Lap Time Analyzer", className="header-title"), #title
         html.P(className="header-description",), #header
+        html.Div(children=dcc.Store(id='filters', data=pull_filters())),
+        html.Div(children=dcc.Store(id='alkamel_data')),
+        html.Div(children=dcc.Store(id='alkamel_data_filtered')),
         ],className="header",), #header class for css
     html.Div(children=[ 
         html.Div(children=[
@@ -84,52 +73,46 @@ app.layout = html.Div(children=[
             dcc.Dropdown(id="session_filter",options=[],clearable=False,className="dropdown",)
             ],className = 'menu-item'
         ),
-        html.Div(children=dcc.Store(id='filters', data=pull_filters())),
-        html.Div(children=dcc.Store(id='alkamel_data')),
-        html.Div(children=dcc.Store(id='alkamel_data_filtered')),
-        ],className="menu",
-    ),
-    html.Div(children=[ 
         html.Div(children=[
             html.Div(children="Class", className="menu-title"),#class picker
             dcc.Dropdown(id="class_filter",options=[], clearable=False, className="dropdown")
             ],className = 'menu-item'
-        ),
-        html.Div(children=[
-            html.Div(children="Analysis", className="menu-title"),#class picker
-            dcc.Dropdown(id="analysis_filter",options=[], clearable=False, className="dropdown")
-            ],className = 'menu-item'
-        ),
-        html.Div(children=[
-            html.Div(children="Team/Driver", className="menu-title"),#class picker
-            dcc.Dropdown(id="team_driver_filter",options=[], clearable=False, className="dropdown")
-            ],className = 'menu-item'
-        ),
-        html.Div(children=[
-            html.Div(children="Stint", className="menu-title"),#class picker
-            dcc.Dropdown(id="stint_filter",options=[], clearable=False, className="dropdown")
-            ],className = 'menu-item'
-        ),
-        ],className="second-menu",
+        )
+        ],className="menu",
     ),
     html.Div(
         children=[
-            html.Div(children=dash_table.DataTable(id='classification_table'), className='dash-table'),
+            html.Div(children=dash_table.DataTable(id='team_classification_table'), className='dash-table'),
         ],className = 'wrapper'
     ),
     html.Div(
         children=[
-            html.Div(children=dcc.Graph(id="position_plot", config={"displayModeBar": False},),className = 'card',),
+            html.Div(children=dcc.Graph(id="position_plot", config={"displayModeBar": True},),className = 'card',),
         ],className = 'wrapper'
     ),
     html.Div(
         children=[
-            html.Div(children=dcc.Graph(id="driver_lap_time_plot", config={"displayModeBar": False},),className="card",),
+            html.Div(children=dcc.Graph(id="team_lap_time_plot", config={"displayModeBar": True},),className = 'card',),
         ],className = 'wrapper'
     ),
     html.Div(
         children=[
-            html.Div(children=dcc.Graph(id="lap_time_plot", config={"displayModeBar": False},),className = 'card',),
+            html.Div(children=dcc.Graph(id="team_stints_plot", config={"displayModeBar": True},),className="card",),
+        ],className = 'wrapper'
+    ),
+    html.Div(
+        children=[
+            html.Div(children=dash_table.DataTable(id='driver_classification_table'), className='dash-table'),
+        ],className = 'wrapper'
+    ),
+    html.Div(
+        children=[
+            html.Div(children=dcc.Graph(id="driver_lap_time_plot", config={"displayModeBar": True},),className="card",),
+        ],className = 'wrapper'
+    ),
+    html.Div(
+        children=[
+            html.Div(children=dcc.Graph(id="driver_stints_plot", config={"displayModeBar": True},),className="card",),
         ],className = 'wrapper'
     )
 ])
@@ -150,7 +133,6 @@ def pull_dropdown_filters(filters):
     filter_pd = pd.read_json(filters, orient='split')
     filtered_data = filter_pd.groupby('championship').count().reset_index()
     filtered_data = filtered_data['championship']
-    print(filtered_data)
     return [{'label':i, 'value':i } for i in filtered_data]
 
 @app.callback(
@@ -174,7 +156,6 @@ def set_circuit_options(season, championship, filter_data):
     filtered_data = pd.read_json(filter_data, orient='split')
     filtered_data = filtered_data[(filtered_data['championship'] == championship)&(filtered_data['season']==season)]
     filtered_data = filtered_data.groupby('round_event').count().reset_index()
-    print(filtered_data)
     filtered_data = filtered_data['round_event']
     return [{'label': i, 'value': i} for i in filtered_data]
 
@@ -215,13 +196,12 @@ def pull_data_sql(filters, query_type):
     #type 
     if (query_type == "all"):
         select_query = """SELECT key, lap_time_seconds, pit_time_seconds, session, round_event, team_no, crossing_finish_line_in_pit,
-        position, class_position, driver_name, championship, manufacturer, vehicle, class, elapsed_seconds"""
+        position, class_position, driver_name, championship, manufacturer, vehicle, class, elapsed_seconds, team_stint, driver_stint"""
         full_query = select_query + from_table + filters
         df = client.query(full_query).to_dataframe()
         return df
     elif query_type == "class":
         class_query = f"""
-
         with get_position_based_on_time as(
         select team_no, position, class_position, championship, season, round, class_int, class_gap, max(elapsed_seconds) as completed_time
         FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint` tbws
@@ -232,7 +212,8 @@ def pull_data_sql(filters, query_type):
             min(s1_seconds) as fastest_s1, min (s2_seconds) as fastest_s2, min(s3_seconds) as fastest_s3, min(lap_time_seconds) as fastest_lap, 
             max(elapsed_seconds) as completed_time
             FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint` tbws
-        {filters}group by 1,2,3,4)
+        {filters}
+        group by 1,2,3,4)
         select 
         rank() over (order by laps_completed desc, classification.completed_time asc) position, 
         rank() over (partition by class order by laps_completed desc, classification.completed_time asc) class_position,
@@ -247,6 +228,18 @@ def pull_data_sql(filters, query_type):
         order by laps_completed desc, completed_time asc"""
         df = client.query(class_query).to_dataframe()
         return df
+    elif query_type == "drivers":
+        driver_query = f"""
+        with get_fastest_drivers as(
+        select driver_name, team_no, class, min(lap_time_seconds) as fastest_lap_time, min(s1_seconds) as fastest_s1, min(s2_seconds) as fastest_s2, min(s3_seconds) as fastest_s3
+        FROM `liquid-evening-342715.alkamel_data.alkamel_timing_board_with_stint` tbws
+        {filters}
+        group by 1,2,3
+        order by 4 asc)
+        select * from get_fastest_drivers"""
+        df = client.query(driver_query).to_dataframe()
+        return df
+
     else:
         return pd.DataFrame()
 
@@ -269,7 +262,8 @@ def create_sql_query(championship, season, circuit):
         return pull_data_sql("LIMIT 0", "all").to_json(orient='split')
 
 @app.callback(
-    Output('classification_table', 'data'),
+    Output('team_classification_table', 'data'),
+    Output('driver_classification_table', 'data'),
     Input('championship_filter', 'value'),
     Input('season_filter', 'value'),
     Input('circuit_filter', 'value'),
@@ -277,19 +271,24 @@ def create_sql_query(championship, season, circuit):
 )
 def load_classification(championship, season, circuit, alk_class):
     where_query = ""
-    wanted_columns = ['team_no', 'vehicle', 'class', 'group', 'round_event', 'lap_number','fastest_s1','fastest_s2','fastest_s3', 'fastest_lap','completed_time']
-    df = pd.DataFrame(columns=wanted_columns)
+    team_wanted_columns = ['team_no', 'vehicle', 'class', 'group', 'round_event', 'lap_number','fastest_s1','fastest_s2','fastest_s3', 'fastest_lap','completed_time']
+    team_class_df = pd.DataFrame(columns=team_wanted_columns)
+    driver_wanted_colums = ['driver_name', 'team_no', 'fastest_lap_time','fastest_s1', 'fastest_s2','fastest_s3']
+    driver_class_df = pd.DataFrame(columns=driver_wanted_colums)
     if(championship != None):
         where_query = create_where_query("championship", championship)
         if(season != None): 
             where_query = where_query + create_and_query("season", season)
             if(circuit != None):
                 where_query = where_query + create_and_query("round_event", circuit)
-                df = pull_data_sql(where_query, "class")
+                team_class_df = pull_data_sql(where_query, "class")
+                driver_class_df = pull_data_sql(where_query, "drivers")
                 if(alk_class != None):
-                    df = filter_class(df,alk_class)
-                df = df.to_dict('records')
-                return df
+                    team_class_df = filter_class(team_class_df,alk_class)
+                    driver_class_df = filter_class(driver_class_df,alk_class)
+                team_class_df = team_class_df.to_dict('records')
+                driver_class_df = driver_class_df.to_dict('records')
+                return team_class_df, driver_class_df
     raise PreventUpdate
 
 def filter_class(df, wec_class):
@@ -316,7 +315,7 @@ def pull_and_filter_alkamel_data(alk_class, session, fia_wec_data):
     
 #callback for the charts
 @app.callback(
-    [Output("position_plot", "figure"), Output("lap_time_plot", "figure"),Output("driver_lap_time_plot", "figure")],
+    [Output("position_plot", "figure"), Output("team_lap_time_plot", "figure"),Output("driver_lap_time_plot", "figure")],
     [Input('class_filter', 'value'),Input('alkamel_data_filtered', 'data')]
 )
 def update_dlt_plot(wec_class, alkamel_data_filtered):
@@ -365,6 +364,61 @@ def update_dlt_plot(wec_class, alkamel_data_filtered):
     lap_time_plot.update_yaxes(showticklabels=False)
 
     return position_plot, lap_time_plot, driver_lap_time_plot
+
+@app.callback(
+    Output('team_stints_plot', 'figure'),
+    [Input('alkamel_data_filtered', 'data'), Input("team_lap_time_plot", "hoverData")]
+)
+def update_team_stints_plot(alkamel_data_filtered, selected_team):
+    
+    fia_wec_data_filtered = pd.read_json(alkamel_data_filtered, orient='split')
+    fia_wec_data_filtered = fia_wec_data_filtered.reset_index(drop=True)
+    #why was this not needed before?... so stupid lmao
+    fia_wec_data_filtered = fia_wec_data_filtered.sort_values(by='elapsed_seconds')
+    fia_wec_data_filtered = fia_wec_data_filtered[fia_wec_data_filtered['crossing_finish_line_in_pit'] != 'B']
+    color_sequence = px.colors.qualitative.Alphabet
+    
+    #if we're using just comparing stints, we prob don't need that high of a filter
+    cutoff_time = fia_wec_data_filtered['lap_time_seconds'].min()*1.1
+    box_plot_title = '110% Time Box Plots (Lower is Faster)'
+    fia_wec_data_with_cutoff_time = fia_wec_data_filtered[fia_wec_data_filtered['lap_time_seconds'] < cutoff_time]
+    if(selected_team != None):
+        fia_wec_data_with_cutoff_time = fia_wec_data_with_cutoff_time[fia_wec_data_with_cutoff_time['team_no'] == selected_team['points'][0]['y']]
+        print(selected_team['points'][0]['y'])
+    
+    team_stints_plot = px.box(fia_wec_data_with_cutoff_time, y = 'team_stint', x = 'lap_time_seconds', color = "team_stint", color_discrete_sequence=color_sequence, title=box_plot_title, )
+    team_stints_plot.update_layout(paper_bgcolor="black",plot_bgcolor="black", legend_font_color="white",clickmode ="event+select")
+    team_stints_plot.update_yaxes(showticklabels=False)
+
+    return team_stints_plot
+
+@app.callback(
+    Output('driver_stints_plot', 'figure'),
+    [Input('alkamel_data_filtered', 'data'), Input("driver_lap_time_plot", "hoverData")]
+)
+def update_driver_stints_plot(alkamel_data_filtered, selected_driver):
+    
+    fia_wec_data_filtered = pd.read_json(alkamel_data_filtered, orient='split')
+    fia_wec_data_filtered = fia_wec_data_filtered.reset_index(drop=True)
+    #why was this not needed before?... so stupid lmao
+    fia_wec_data_filtered = fia_wec_data_filtered.sort_values(by='elapsed_seconds')
+    fia_wec_data_filtered = fia_wec_data_filtered[fia_wec_data_filtered['crossing_finish_line_in_pit'] != 'B']
+    color_sequence = px.colors.qualitative.Alphabet
+    
+    #if we're using just comparing stints, we prob don't need that high of a filter
+    cutoff_time = fia_wec_data_filtered['lap_time_seconds'].min()*1.1
+    box_plot_title = '110% Time Box Plots (Lower is Faster)'
+    fia_wec_data_with_cutoff_time = fia_wec_data_filtered[fia_wec_data_filtered['lap_time_seconds'] < cutoff_time]
+    if(selected_driver != None):
+        fia_wec_data_with_cutoff_time = fia_wec_data_with_cutoff_time[fia_wec_data_with_cutoff_time['driver_name'] == selected_driver['points'][0]['y']]
+        print(selected_driver['points'][0]['y'])
+
+    team_stints_plot = px.box(fia_wec_data_with_cutoff_time, y = 'driver_stint', x = 'lap_time_seconds', color = "driver_stint", color_discrete_sequence=color_sequence, title=box_plot_title, )
+    team_stints_plot.update_layout(paper_bgcolor="black",plot_bgcolor="black", legend_font_color="white",clickmode ="event+select")
+    team_stints_plot.update_yaxes(showticklabels=False)
+
+    return team_stints_plot
+
 if __name__ == "__main__":
-    #app.run(host='0.0.0.0', port=port, debug=True,dev_tools_hot_reload=True)
-    app.run(host='127.0.0.1', port=port, debug=True, dev_tools_hot_reload=True)
+    app.run(host='0.0.0.0', port=8070)
+    #app.run(host='127.0.0.1', port=8070, debug=True, dev_tools_hot_reload=True)
