@@ -8,15 +8,26 @@ import plotly.express as px
 from google.cloud import bigquery
 import os
 from dash.exceptions import PreventUpdate
+import google.auth
 #caching stuff
 
 #GCloud Stuff
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="credentials.json"
+#os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="credentials.json"
 os.environ["GCLOUD_PROJECT"]='liquid-evening-342715'
 
-client = bigquery.Client()
+credentials, project_id = google.auth.default()
+
+ON_HEROKU = os.environ.get('ON_HEROKU')
+if ON_HEROKU:
+    port = int(os.environ.get("PORT", 8080)) 
+else:
+    port = 8080
+
+client = bigquery.Client(project = 'liquid-evening-342715')
 
 query_config = bigquery.QueryJobConfig(use_legacy_sql=True)
+
+
 app = dash.Dash(__name__)
 server = app.server
 
@@ -384,7 +395,6 @@ def update_team_stints_plot(alkamel_data_filtered, selected_team):
     fia_wec_data_with_cutoff_time = fia_wec_data_filtered[fia_wec_data_filtered['lap_time_seconds'] < cutoff_time]
     if(selected_team != None):
         fia_wec_data_with_cutoff_time = fia_wec_data_with_cutoff_time[fia_wec_data_with_cutoff_time['team_no'] == selected_team['points'][0]['y']]
-        print(selected_team['points'][0]['y'])
     
     team_stints_plot = px.box(fia_wec_data_with_cutoff_time, y = 'team_stint', x = 'lap_time_seconds', color = "team_stint", color_discrete_sequence=color_sequence, title=box_plot_title, )
     team_stints_plot.update_layout(paper_bgcolor="black",plot_bgcolor="black", legend_font_color="white",clickmode ="event+select")
@@ -411,7 +421,6 @@ def update_driver_stints_plot(alkamel_data_filtered, selected_driver):
     fia_wec_data_with_cutoff_time = fia_wec_data_filtered[fia_wec_data_filtered['lap_time_seconds'] < cutoff_time]
     if(selected_driver != None):
         fia_wec_data_with_cutoff_time = fia_wec_data_with_cutoff_time[fia_wec_data_with_cutoff_time['driver_name'] == selected_driver['points'][0]['y']]
-        print(selected_driver['points'][0]['y'])
 
     team_stints_plot = px.box(fia_wec_data_with_cutoff_time, y = 'driver_stint', x = 'lap_time_seconds', color = "driver_stint", color_discrete_sequence=color_sequence, title=box_plot_title, )
     team_stints_plot.update_layout(paper_bgcolor="black",plot_bgcolor="black", legend_font_color="white",clickmode ="event+select")
@@ -420,5 +429,5 @@ def update_driver_stints_plot(alkamel_data_filtered, selected_driver):
     return team_stints_plot
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8070)
+    app.run(host='0.0.0.0', port=port)
     #app.run(host='127.0.0.1', port=8070, debug=True, dev_tools_hot_reload=True)
